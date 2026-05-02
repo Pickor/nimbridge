@@ -45,7 +45,7 @@ export default function AppHeader({ brand, links, email, displayName, role }: Pr
                 {item.label}
               </a>
             ) : (
-              <details key={item.label} className="relative">
+              <details key={item.label} name="nav-dropdown" className="relative">
                 <summary
                   className={[
                     "list-none cursor-pointer flex items-center gap-1 select-none",

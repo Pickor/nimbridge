@@ -30,11 +30,21 @@ function toBuckets(rows: ClassifiedListing[]): BucketData {
   };
 }
 
-async function fetchListings(): Promise<ClassifiedListing[]> {
+// Verticals the SSE feed knows about. Default is wine if `?category=` is
+// missing — preserves the original /api/stream behaviour the wine dashboard
+// used before multi-vertical support.
+const ALLOWED_CATEGORIES = new Set([
+  "wine-whisky-spirits",
+  "jewellery",
+  "watches",
+  "apple",
+]);
+
+async function fetchListings(category: string): Promise<ClassifiedListing[]> {
   const { data } = await supabaseAdmin
     .from("v_classified_listings")
     .select("*")
-    .eq("category", "wine-whisky-spirits")
+    .eq("category", category)
     .order("ends_at", { ascending: true })
     .limit(5000);
   return (data ?? []) as ClassifiedListing[];
@@ -59,6 +69,10 @@ export async function GET(request: Request) {
 
   if (!user) return new Response("Unauthorized", { status: 401 });
 
+  const url = new URL(request.url);
+  const requested = url.searchParams.get("category") ?? "wine-whisky-spirits";
+  const category = ALLOWED_CATEGORIES.has(requested) ? requested : "wine-whisky-spirits";
+
   const signal = request.signal;
   const encoder = new TextEncoder();
 
@@ -75,7 +89,7 @@ export async function GET(request: Request) {
       let lastPayload = "";
 
       // Send initial snapshot immediately
-      const initial = await fetchListings();
+      const initial = await fetchListings(category);
       const initialBuckets = toBuckets(initial);
       lastPayload = JSON.stringify(initialBuckets);
       sendEvent("snapshot", lastPayload);
@@ -88,7 +102,7 @@ export async function GET(request: Request) {
       const pollTimer = setInterval(async () => {
         if (signal.aborted) return;
         try {
-          const listings = await fetchListings();
+          const listings = await fetchListings(category);
           const payload = JSON.stringify(toBuckets(listings));
           if (payload !== lastPayload) {
             lastPayload = payload;

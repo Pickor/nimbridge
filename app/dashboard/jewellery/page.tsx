@@ -1,36 +1,92 @@
 /**
- * Placeholder for the Jewellery Deals dashboard.
+ * Jewellery deals dashboard.
  *
- * The data plumbing for non-wine categories isn't in place yet — the
- * scraper still only crawls wine/spirits — so this page just confirms
- * the route is wired up and tells the user what's coming.
- *
- * When the scraper is extended, replace the placeholder body with the
- * same SSR + ListingsBoard pattern from app/dashboard/page.tsx,
- * filtering by the jewellery catawiki_category_id.
+ * Same SSR + ListingsBoard pattern as the wine dashboard
+ * (app/dashboard/page.tsx). Filters by the `jewellery` vertical.
+ * The ListingRow component will render dashes in the wine-specific
+ * cells (Vivino / CellarTracker / Systembolaget) — those values are
+ * null for non-wine lots, which the existing component handles
+ * gracefully.
  */
 import { createClient } from "@/lib/supabase/server";
 import { getIdentity, hasLevel, ROLE_LEVEL } from "@/lib/admin/roles";
 import { redirect } from "next/navigation";
+import type { ClassifiedListing, BucketData } from "@/lib/types";
+import { DEFAULT_SETTINGS } from "@/lib/types";
+import ListingsBoard from "../listings-board";
+import StatusBar from "@/components/status-bar";
 import AppHeader from "@/components/app-header";
 import { buildNavLinks } from "@/lib/nav-links";
+
+const VERTICAL = "jewellery";
 
 export const metadata = { title: "Jewellery – Nimbridge" };
 
 export default async function JewelleryDealsPage() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [identity, profileRes] = await Promise.all([
-    getIdentity(user.id, user.email ?? ""),
-    supabase.from("profiles").select("display_name").eq("id", user.id).maybeSingle(),
-  ]);
+  const identity = await getIdentity(user.id, user.email ?? "");
   if (identity.role === "pending") redirect("/pending");
   if (!hasLevel(identity, ROLE_LEVEL.user)) redirect("/login?error=access");
 
+  const [listingsRes, favoritesRes, activeCountRes, lastRunRes, profileRes, settingsRes] =
+    await Promise.all([
+      supabase
+        .from("v_classified_listings")
+        .select("*")
+        .eq("category", VERTICAL)
+        .order("ends_at", { ascending: true })
+        .limit(5000),
+      supabase.from("favorites").select("listing_id").eq("user_id", user.id),
+      supabase
+        .from("v_classified_listings")
+        .select("*", { count: "exact", head: true })
+        .eq("category", VERTICAL),
+      supabase
+        .from("scraper_runs")
+        .select("ran_at, lots_scraped")
+        .order("ran_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from("profiles")
+        .select("display_name")
+        .eq("id", user.id)
+        .maybeSingle(),
+      supabase
+        .from("user_settings")
+        .select("currency, country_code")
+        .eq("user_id", user.id)
+        .maybeSingle(),
+    ]);
+
+  const favoriteIds = new Set(
+    (favoritesRes.data ?? []).map((f) => f.listing_id as string)
+  );
+  const rows = (listingsRes.data ?? []) as ClassifiedListing[];
+
+  const buckets: BucketData = {
+    ending_soon: rows.filter((l) => l.ending_soon_no_bids),
+    low_price:   rows.filter((l) => l.price_bucket === "low"),
+    good_price:  rows.filter((l) => l.price_bucket === "good"),
+    ok_price:    rows.filter((l) => l.price_bucket === "ok"),
+    overpriced:  rows.filter((l) => l.overpriced),
+    rest:        rows.filter((l) => !l.ending_soon_no_bids && l.price_bucket === null && !l.overpriced),
+  };
+
   const showAdminLink =
-    identity.role === "owner" || identity.role === "admin" || identity.role === "moderator";
+    identity.role === "owner" ||
+    identity.role === "admin" ||
+    identity.role === "moderator";
+
+  const displayName  = profileRes.data?.display_name || undefined;
+  const currency     = settingsRes.data?.currency     ?? DEFAULT_SETTINGS.currency;
+  const countryCode  = settingsRes.data?.country_code ?? DEFAULT_SETTINGS.country_code;
+  const showShipping = countryCode === "se";
 
   return (
     <div className="min-h-screen bg-neutral-950">
@@ -38,17 +94,21 @@ export default async function JewelleryDealsPage() {
         brand="🔭 Nimbridge"
         links={buildNavLinks({ pathname: "/dashboard/jewellery", showAdmin: showAdminLink })}
         email={user.email ?? ""}
-        displayName={profileRes.data?.display_name || undefined}
+        displayName={displayName}
         role={identity.role}
       />
-      <main className="mx-auto max-w-3xl px-4 py-20 text-center">
-        <div className="text-5xl mb-6">💎</div>
-        <h1 className="text-3xl font-semibold text-white mb-3">Jewellery — Coming soon</h1>
-        <p className="text-neutral-400 text-sm leading-relaxed">
-          The crawler isn&apos;t configured to pick up Jewellery lots from Catawiki yet.
-          This page will mirror the Wine &amp; Spirits dashboard once data is flowing.
-        </p>
-      </main>
+      <StatusBar
+        activeListings={activeCountRes.count ?? 0}
+        lastRunAt={lastRunRes.data?.ran_at ?? null}
+        lastRunScraped={lastRunRes.data?.lots_scraped ?? null}
+      />
+      <ListingsBoard
+        initialBuckets={buckets}
+        initialFavoriteIds={[...favoriteIds]}
+        currency={currency}
+        showShipping={showShipping}
+        category={VERTICAL}
+      />
     </div>
   );
 }

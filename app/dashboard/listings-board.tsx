@@ -242,9 +242,21 @@ interface Props {
   initialFavoriteIds: string[];
   currency: string;
   showShipping: boolean;
+  /**
+   * Vertical to subscribe the SSE stream to. Defaults to wine-whisky-spirits
+   * for backward compat. Pass "jewellery" / "watches" from the corresponding
+   * dashboards.
+   */
+  category?: string;
 }
 
-export default function ListingsBoard({ initialBuckets, initialFavoriteIds, currency, showShipping }: Props) {
+export default function ListingsBoard({
+  initialBuckets,
+  initialFavoriteIds,
+  currency,
+  showShipping,
+  category = "wine-whisky-spirits",
+}: Props) {
   const [buckets, setBuckets]         = useState<BucketData>(initialBuckets);
   const [favoriteIds, setFavoriteIds] = useState(new Set(initialFavoriteIds));
   const [connected, setConnected]     = useState(true);
@@ -270,7 +282,7 @@ export default function ListingsBoard({ initialBuckets, initialFavoriteIds, curr
 
   useEffect(() => {
     function connect() {
-      const es = new EventSource("/api/stream");
+      const es = new EventSource(`/api/stream?category=${encodeURIComponent(category)}`);
       esRef.current = es;
       es.onopen = () => setConnected(true);
       es.addEventListener("snapshot", (e: MessageEvent<string>) => {
