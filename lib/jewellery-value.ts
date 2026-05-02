@@ -10,9 +10,11 @@
  * against the auction bid, not a formal appraisal.
  *
  * Update process: when the underlying market moves materially (or once a
- * quarter), update the constants below from the same sources the user uses:
+ * quarter), update the constants below from these sources:
  *   - Diamonds: https://www.pricescope.com/diamond-prices/diamond-prices-chart/
- *   - Gold/Silver: https://guldpris.se (London Fix column = spot)
+ *   - Yellow gold + silver: https://guldpris.se (London Fix column = spot)
+ *   - White gold:           Pricescope retail ranges (USD/g)
+ *   - Rose gold:            Swedish dealer ranges (SEK/g; see notes below)
  */
 
 // ── FX (rough cross rates; refresh when material) ─────────────────────────
@@ -32,15 +34,111 @@ function toEur(amount: number, fromCcy: string): number {
   return amount * rate;
 }
 
-// ── Gold (SEK / g, London Fix; user's table) ──────────────────────────────
-const GOLD_SEK_PER_G: Record<string, number> = {
-  "24":   1363.55,
-  "22":   1227.20, // not in user's table but close to 21.6K
-  "21.6": 1227.20,
-  "21":   1227.20,
-  "18":   1022.66,
-  "14":   795.40,
-  "9":    511.33,
+// ── Weight extraction ─────────────────────────────────────────────────────
+
+const WEIGHT_RE = /(?<![A-Za-z])(\d+(?:[.,]\d+)?)\s*(?:g|gr|gram|gramme|gms?)\b/i;
+
+/**
+ * Extract weight in grams from a lot's title or — as fallback — from any of
+ * its Catawiki specifications rows whose name looks weight-y. Returns null
+ * if nothing parseable is found.
+ */
+export function extractWeightGrams(
+  title: string,
+  specifications: Array<{ name: string; value: string }> | null = null,
+): number | null {
+  const fromTitle = title.match(WEIGHT_RE);
+  if (fromTitle) return parseFloat(fromTitle[1].replace(",", "."));
+
+  if (specifications) {
+    for (const s of specifications) {
+      const n = s.name.toLowerCase();
+      if (
+        n.includes("weight") || n.includes("vikt") ||
+        n.includes("gewicht") || n.includes("poids") || n.includes("peso")
+      ) {
+        const m = s.value.match(WEIGHT_RE);
+        if (m) return parseFloat(m[1].replace(",", "."));
+      }
+    }
+  }
+  return null;
+}
+
+// ── Gold colour ───────────────────────────────────────────────────────────
+
+export type GoldColor = "white" | "yellow" | "rose" | "mixed";
+
+/**
+ * Pick out which colour of gold is referenced in a title. Catawiki titles
+ * are explicit about this ("18 kt. Yellow gold"). A title that names two
+ * or more colours, or uses words like "tri-colour" / "mixed gold",
+ * returns "mixed".
+ */
+export function parseGoldColor(title: string): GoldColor | null {
+  const t = title.toLowerCase();
+  if (/\b(bi|tri|two|three)[-\s]colou?red?\b|\bmixed\s*gold\b/.test(t)) return "mixed";
+  const hasWhite  = /\bwhite\s*gold\b/.test(t);
+  const hasYellow = /\byellow\s*gold\b/.test(t);
+  const hasRose   = /\b(?:rose|pink|red)\s*gold\b/.test(t);
+  const count = [hasWhite, hasYellow, hasRose].filter(Boolean).length;
+  if (count > 1) return "mixed";
+  if (hasWhite)  return "white";
+  if (hasYellow) return "yellow";
+  if (hasRose)   return "rose";
+  return null;
+}
+
+// ── Gold price tables (EUR / g, by colour × karat) ────────────────────────
+//
+// Stored in EUR/g internally so the row component doesn't have to care
+// where each row sourced its price.  Sources:
+//
+//   yellow: guldpris.se London Fix (SEK/g × 0.087)
+//             24K   1363.55 → 118.63
+//             21.6K 1227.20 → 106.77   (also covers 21K / 22K)
+//             18K   1022.66 →  88.97
+//             14K    795.40 →  69.20
+//             9K     511.33 →  44.49
+//
+//   white:  Pricescope retail ranges, midpoint (USD/g × 0.93)
+//             18K  ~$110/g → 102.45
+//             14K  ~$82/g  →  76.04
+//             10K  ~$59/g  →  55.03
+//
+//   rose:   Swedish dealer ranges, midpoint (SEK/g × 0.087)
+//             18K   ~950 SEK/g → 82.65
+//             14K   ~735 SEK/g → 63.99
+//             (rose gold isn't commonly produced at 21+ K — too soft once
+//              the copper alloy is reduced — so we leave those blank.)
+//
+//   mixed:  same numbers as yellow (most common base alloy when the parser
+//           can't pin one colour down).
+//
+// Karats not listed for a given colour fall back to the yellow column.
+
+const YELLOW_GOLD: Record<string, number> = {
+  "24":   118.63,
+  "22":   106.77,
+  "21.6": 106.77,
+  "21":   106.77,
+  "18":    88.97,
+  "14":    69.20,
+  "9":     44.49,
+};
+
+const GOLD_EUR_PER_G: Record<GoldColor, Record<string, number>> = {
+  yellow: YELLOW_GOLD,
+  white: {
+    "18": 102.45,
+    "14":  76.04,
+    "10":  55.03,
+  },
+  rose: {
+    "18": 82.65,
+    "14": 63.99,
+  },
+  mixed: YELLOW_GOLD,
 };
 
 function parseGoldKarat(title: string): string | null {
@@ -56,9 +154,13 @@ function valueGoldEur(
   const karat = parseGoldKarat(title);
   const grams = extractWeightGrams(title, specifications);
   if (!karat || grams == null) return null;
-  const sekPerG = GOLD_SEK_PER_G[karat];
-  if (!sekPerG) return null;
-  return toEur(sekPerG * grams, "SEK");
+  // If no colour parsed, default to yellow (most common, conservative-ish).
+  const colour: GoldColor = parseGoldColor(title) ?? "yellow";
+  // Try colour-specific price; fall back to yellow if that karat isn't in
+  // the colour-specific table (e.g. 24K rose gold doesn't exist commercially).
+  const eurPerG = GOLD_EUR_PER_G[colour][karat] ?? YELLOW_GOLD[karat];
+  if (!eurPerG) return null;
+  return eurPerG * grams;
 }
 
 // ── Silver (SEK / g, London Fix; user's table) ────────────────────────────
@@ -145,61 +247,6 @@ function valueDiamondEur(title: string): number | null {
   if (!usdPerCt) return null;
   const totalUsd = m.carat * usdPerCt * diamondCaratFactor(m.carat);
   return toEur(totalUsd, "USD");
-}
-
-// ── Weight extraction ─────────────────────────────────────────────────────
-
-const WEIGHT_RE = /(?<![A-Za-z])(\d+(?:[.,]\d+)?)\s*(?:g|gr|gram|gramme|gms?)\b/i;
-
-/**
- * Extract weight in grams from a lot's title or — as fallback — from any of
- * its Catawiki specifications rows whose name looks weight-y. Returns null
- * if nothing parseable is found.
- */
-export function extractWeightGrams(
-  title: string,
-  specifications: Array<{ name: string; value: string }> | null = null,
-): number | null {
-  const fromTitle = title.match(WEIGHT_RE);
-  if (fromTitle) return parseFloat(fromTitle[1].replace(",", "."));
-
-  if (specifications) {
-    for (const s of specifications) {
-      const n = s.name.toLowerCase();
-      if (
-        n.includes("weight") || n.includes("vikt") ||
-        n.includes("gewicht") || n.includes("poids") || n.includes("peso")
-      ) {
-        const m = s.value.match(WEIGHT_RE);
-        if (m) return parseFloat(m[1].replace(",", "."));
-      }
-    }
-  }
-  return null;
-}
-
-// ── Gold colour ───────────────────────────────────────────────────────────
-
-export type GoldColor = "white" | "yellow" | "rose" | "mixed";
-
-/**
- * Pick out which colour of gold is referenced in a title. Catawiki titles
- * are explicit about this ("18 kt. Yellow gold"). A title that names two
- * or more colours, or uses words like "tri-colour" / "mixed gold",
- * returns "mixed".
- */
-export function parseGoldColor(title: string): GoldColor | null {
-  const t = title.toLowerCase();
-  if (/\b(bi|tri|two|three)[-\s]colou?red?\b|\bmixed\s*gold\b/.test(t)) return "mixed";
-  const hasWhite  = /\bwhite\s*gold\b/.test(t);
-  const hasYellow = /\byellow\s*gold\b/.test(t);
-  const hasRose   = /\b(?:rose|pink|red)\s*gold\b/.test(t);
-  const count = [hasWhite, hasYellow, hasRose].filter(Boolean).length;
-  if (count > 1) return "mixed";
-  if (hasWhite)  return "white";
-  if (hasYellow) return "yellow";
-  if (hasRose)   return "rose";
-  return null;
 }
 
 // ── Public API ────────────────────────────────────────────────────────────
