@@ -3,10 +3,32 @@
 import { useEffect, useMemo, useState } from "react";
 import type { HistoryListing, LotOutcome } from "@/lib/types";
 import HistoryRow from "@/components/history-row";
+import {
+  parseGoldColor,
+  type GoldColor,
+  parseDiamondGrade,
+  parseGoldKarat,
+  parseSilverPurity,
+  parseDiamondCertificate,
+  DIAMOND_CERT_LABS,
+  DIAMOND_CERT_LABEL,
+  type DiamondCertLab,
+} from "@/lib/jewellery-value";
+import { isEuCountry } from "@/lib/eu-countries";
+import type { CategoryDef } from "@/app/dashboard/listings-board";
 
-// ── Category config ────────────────────────────────────────────────────────
+type ShipsFrom = "eu" | "non_eu" | null;
 
-const CATEGORIES = [
+// Grades values, mirrored from app/dashboard/listings-board.tsx so the
+// History page exposes the same context-aware Clarity / Karat / Purity row.
+const DIAMOND_CLARITIES = ["IF", "VVS1", "VVS2", "VS1", "VS2", "SI1", "SI2", "I1"] as const;
+const GOLD_KARATS       = ["24", "21.6", "18", "14", "9"] as const;
+const SILVER_PURITIES   = ["925", "830", "900", "800", "600", "400"] as const;
+
+// Default (wine) category list — used when a page doesn't pass its own.
+// History wine pills are flat (no drill-down subcategories) for now, so
+// the shape collapses to `{ id, label, icon }`.
+const DEFAULT_WINE_CATEGORIES: CategoryDef[] = [
   { id: null,  label: "All",           icon: "🌐" },
   { id: 437,   label: "Whisky",        icon: "🥃" },
   { id: 965,   label: "Rum & Cognac",  icon: "🥃" },
@@ -14,7 +36,7 @@ const CATEGORIES = [
   { id: 961,   label: "Champagne",     icon: "🥂" },
   { id: 971,   label: "Port & Sweet",  icon: "🍷" },
   { id: 963,   label: "Beer",          icon: "🍺" },
-] as const;
+];
 
 // ── Sort config ────────────────────────────────────────────────────────────
 
@@ -87,15 +109,34 @@ interface Props {
   showShipping: boolean;
   /** Vertical the rows belong to. Hides Rating + SB pris on non-wine. */
   vertical?: "wine-whisky-spirits" | "jewellery" | "watches" | "apple";
+  /**
+   * Per-vertical category pills. Defaults to the wine list. Passed in
+   * from app/history/jewellery and app/history/watches so each vertical
+   * gets its own pills and drill-down behaviour.
+   */
+  categories?: CategoryDef[];
 }
 
-export default function HistoryBoard({ listings, currency, showShipping, vertical = "wine-whisky-spirits" }: Props) {
+export default function HistoryBoard({
+  listings, currency, showShipping,
+  vertical = "wine-whisky-spirits",
+  categories = DEFAULT_WINE_CATEGORIES,
+}: Props) {
   const isWine = vertical === "wine-whisky-spirits";
-  const [categoryId, setCategoryId]   = useState<number | null>(null);
-  const [outcome, setOutcome]         = useState<LotOutcome | "all">("all");
-  const [sortMode, setSortMode]       = useState<SortMode>("date_desc");
-  const [search, setSearch]           = useState("");
-  const [onlyInSB, setOnlyInSB]       = useState(false);
+  const isJewellery = vertical === "jewellery";
+
+  const [categoryId, setCategoryId]                 = useState<number | null>(null);
+  const [subcategoryId, setSubcategoryId]           = useState<number | null>(null);
+  const [outcome, setOutcome]                       = useState<LotOutcome | "all">("all");
+  const [sortMode, setSortMode]                     = useState<SortMode>("date_desc");
+  const [search, setSearch]                         = useState("");
+  const [onlyInSB, setOnlyInSB]                     = useState(false);
+  // Jewellery / watches filters — mirror the Deals dashboard rows.
+  const [goldColor, setGoldColor]                   = useState<GoldColor | null>(null);
+  const [activeGrades, setActiveGrades]             = useState<Set<string>>(new Set());
+  const [activeCerts, setActiveCerts]               = useState<Set<DiamondCertLab>>(new Set());
+  const [shipsFrom, setShipsFrom]                   = useState<ShipsFrom>(null);
+
   const [page, setPage]               = useState(1);
   const [showTopBtn, setShowTopBtn]   = useState(false);
 
@@ -105,8 +146,17 @@ export default function HistoryBoard({ listings, currency, showShipping, vertica
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Reset page when filters change
-  useEffect(() => { setPage(1); }, [categoryId, outcome, sortMode, search, onlyInSB]);
+  // Reset page when any filter changes.
+  useEffect(() => { setPage(1); }, [
+    categoryId, subcategoryId, outcome, sortMode, search, onlyInSB,
+    goldColor, activeGrades, activeCerts, shipsFrom,
+  ]);
+
+  // Gold-colour drill-down only meaningfully applies inside the Gold pill
+  // (cat 313 / sub 1660). Treat it as null otherwise so it doesn't filter
+  // out non-gold lots.
+  const inGold = categoryId === 313 && subcategoryId === 1660;
+  const effectiveGoldColor = inGold ? goldColor : null;
 
   // Counts per outcome for badges
   const outcomeCounts = useMemo(() => ({
@@ -124,6 +174,9 @@ export default function HistoryBoard({ listings, currency, showShipping, vertica
     }
     if (categoryId !== null) {
       list = list.filter((l) => l.catawiki_category_id === categoryId);
+      if (subcategoryId !== null) {
+        list = list.filter((l) => l.catawiki_subcategory_id === subcategoryId);
+      }
     }
     if (onlyInSB) {
       list = list.filter((l) => l.sb_price != null);
@@ -132,8 +185,49 @@ export default function HistoryBoard({ listings, currency, showShipping, vertica
       const q = search.trim().toLowerCase();
       list = list.filter((l) => l.title.toLowerCase().includes(q));
     }
+    if (effectiveGoldColor !== null) {
+      list = list.filter((l) => parseGoldColor(l.title) === effectiveGoldColor);
+    }
+    if (shipsFrom === "eu") {
+      list = list.filter((l) => isEuCountry(l.seller_country));
+    } else if (shipsFrom === "non_eu") {
+      list = list.filter((l) => l.seller_country != null && !isEuCountry(l.seller_country));
+    }
+    // Certificate (Diamonds only). auction_results doesn't store
+    // specifications, so we match against the title alone — same regex as
+    // the Deals dashboard. Lots without a detectable lab are dropped when
+    // any pill is active (matches Deals behaviour).
+    if (activeCerts.size > 0) {
+      list = list.filter((l) => {
+        if (l.catawiki_category_id !== 715) return false;
+        const lab = parseDiamondCertificate(l.title);
+        return lab !== null && activeCerts.has(lab);
+      });
+    }
+    // Grades — context-aware: clarity for diamonds, karat for gold,
+    // purity for silver. Other materials are dropped when any pill is on.
+    if (activeGrades.size > 0) {
+      list = list.filter((l) => {
+        if (l.catawiki_category_id === 715) {
+          const g = parseDiamondGrade(l.title);
+          return !!g && activeGrades.has(g.clarity);
+        }
+        if (l.catawiki_subcategory_id === 1660) {
+          const k = parseGoldKarat(l.title);
+          return !!k && activeGrades.has(k);
+        }
+        if (l.catawiki_subcategory_id === 841) {
+          const p = parseSilverPurity(l.title);
+          return p !== null && activeGrades.has(String(p));
+        }
+        return false;
+      });
+    }
     return sortHistory(list, sortMode);
-  }, [listings, outcome, categoryId, sortMode, search, onlyInSB]);
+  }, [
+    listings, outcome, categoryId, subcategoryId, sortMode, search, onlyInSB,
+    effectiveGoldColor, shipsFrom, activeCerts, activeGrades,
+  ]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const visible    = filtered.slice(0, page * PAGE_SIZE);
@@ -203,24 +297,182 @@ export default function HistoryBoard({ listings, currency, showShipping, vertica
           className="w-full sm:w-80 px-3 py-1.5 rounded-lg bg-neutral-800 border border-neutral-700 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:border-neutral-500"
         />
 
-        {/* Category */}
+        {/* Category — pills with optional pre-set subcategoryId (jewellery
+            Gold/Silver, watches Rolex/Omega) apply both ids in one click
+            and skip the drill-down row. Otherwise we render a sub-row when
+            the active category exposes `subcategories`. */}
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-neutral-500 shrink-0 w-16">Category</span>
-          {CATEGORIES.map((cat) => (
-            <button
-              key={cat.id ?? "all"}
-              onClick={() => setCategoryId(cat.id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm transition-colors ${
-                categoryId === cat.id
-                  ? "bg-white text-black font-medium"
-                  : "bg-neutral-800 text-neutral-300 hover:bg-neutral-700"
-              }`}
-            >
-              <span>{cat.icon}</span>
-              <span>{cat.label}</span>
-            </button>
-          ))}
+          {categories.map((cat) => {
+            const active =
+              categoryId === cat.id &&
+              (cat.subcategoryId === undefined || subcategoryId === (cat.subcategoryId ?? null));
+            return (
+              <button
+                key={`${cat.id ?? "all"}:${cat.subcategoryId ?? ""}`}
+                onClick={() => {
+                  setCategoryId(cat.id);
+                  setSubcategoryId(cat.subcategoryId ?? null);
+                  // Switching pills clears the drill-downs so a stale
+                  // IF/VVS or IGI pick doesn't survive into Gold/Silver.
+                  setGoldColor(null);
+                  setActiveGrades(new Set());
+                  setActiveCerts(new Set());
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm transition-colors ${
+                  active
+                    ? "bg-white text-black font-medium"
+                    : "bg-neutral-800 text-neutral-300 hover:bg-neutral-700"
+                }`}
+              >
+                <span>{cat.icon}</span>
+                <span>{cat.label}</span>
+              </button>
+            );
+          })}
         </div>
+
+        {/* Drill-down subcategory pills — only for top-level pills WITHOUT
+            a preset subcategoryId (matches Deals dashboard behaviour). */}
+        {(() => {
+          const activeCat = categories.find((c) => c.id === categoryId) ?? null;
+          if (!activeCat?.subcategories || activeCat.subcategoryId !== undefined) return null;
+          return (
+            <div className="flex flex-wrap gap-2 pl-1">
+              {activeCat.subcategories.map((sub) => (
+                <button
+                  key={sub.id ?? "all"}
+                  onClick={() => setSubcategoryId(sub.id)}
+                  className={`px-2.5 py-1 rounded-full text-xs transition-colors ${
+                    subcategoryId === sub.id
+                      ? "bg-white text-black font-medium"
+                      : "bg-neutral-800/60 text-neutral-400 hover:bg-neutral-700"
+                  }`}
+                >
+                  {sub.label}
+                </button>
+              ))}
+            </div>
+          );
+        })()}
+
+        {/* Gold-colour drill-down — jewellery Gold pill only. */}
+        {isJewellery && inGold && (
+          <div className="flex flex-wrap gap-2 pl-1">
+            {([
+              { key: null,     label: "All gold" },
+              { key: "yellow", label: "🟡 Yellow" },
+              { key: "white",  label: "⚪ White" },
+              { key: "rose",   label: "🌹 Rose" },
+              { key: "mixed",  label: "🌈 Mixed" },
+            ] as { key: GoldColor | null; label: string }[]).map((g) => (
+              <button
+                key={g.key ?? "all"}
+                onClick={() => setGoldColor(g.key)}
+                className={`px-2.5 py-1 rounded-full text-xs transition-colors ${
+                  goldColor === g.key
+                    ? "bg-white text-black font-medium"
+                    : "bg-neutral-800/60 text-neutral-400 hover:bg-neutral-700"
+                }`}
+              >
+                {g.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Grades — context-aware Clarity / Karat / Purity, jewellery only. */}
+        {isJewellery && (() => {
+          const isGold    = categoryId === 313 && subcategoryId === 1660;
+          const isSilver  = categoryId === 313 && subcategoryId === 841;
+          const isDiamond = categoryId === 715;
+          if (!isGold && !isSilver && !isDiamond) return null;
+          const label   = isGold ? "Karat" : isSilver ? "Purity" : "Clarity";
+          const options: readonly string[] =
+            isGold ? GOLD_KARATS : isSilver ? SILVER_PURITIES : DIAMOND_CLARITIES;
+          const renderLabel = (opt: string) => isGold ? `${opt} kt` : opt;
+          const tooltip = (opt: string) =>
+            isGold   ? `Gold ${opt} kt` :
+            isSilver ? `Silver ${opt}/1000` :
+                       `Diamond clarity ${opt}`;
+          return (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-neutral-500 shrink-0 w-16">{label}</span>
+              <Pill
+                active={activeGrades.size === 0}
+                onClick={() => setActiveGrades(new Set())}
+                title={`Show all ${label.toLowerCase()} values`}
+              >
+                Any
+              </Pill>
+              {options.map((g) => (
+                <Pill
+                  key={g}
+                  active={activeGrades.has(g)}
+                  onClick={() =>
+                    setActiveGrades((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(g)) next.delete(g); else next.add(g);
+                      return next;
+                    })
+                  }
+                  title={tooltip(g)}
+                >
+                  {renderLabel(g)}
+                </Pill>
+              ))}
+            </div>
+          );
+        })()}
+
+        {/* Certificate — diamonds only. auction_results has no
+            specifications column, so this matches against title only. */}
+        {isJewellery && categoryId === 715 && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-neutral-500 shrink-0 w-16">Certificate</span>
+            <Pill
+              active={activeCerts.size === 0}
+              onClick={() => setActiveCerts(new Set())}
+              title="Show diamonds with any (or no) lab report"
+            >
+              Any
+            </Pill>
+            {DIAMOND_CERT_LABS.map((lab) => (
+              <Pill
+                key={lab}
+                active={activeCerts.has(lab)}
+                onClick={() =>
+                  setActiveCerts((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(lab)) next.delete(lab); else next.add(lab);
+                    return next;
+                  })
+                }
+                title={`Match diamonds graded by ${DIAMOND_CERT_LABEL[lab]}`}
+              >
+                {DIAMOND_CERT_LABEL[lab]}
+              </Pill>
+            ))}
+          </div>
+        )}
+
+        {/* Ships from — jewellery + watches only. Wine archives don't
+            currently surface seller country in the same way, and the
+            existing wine UX doesn't have this row. */}
+        {(isJewellery || vertical === "watches") && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-neutral-500 shrink-0 w-16">Ships from</span>
+            <Pill active={shipsFrom === null}     onClick={() => setShipsFrom(null)}>
+              Any
+            </Pill>
+            <Pill active={shipsFrom === "eu"}     onClick={() => setShipsFrom("eu")}     title="Seller country is an EU member state">
+              <span>🇪🇺 EU</span>
+            </Pill>
+            <Pill active={shipsFrom === "non_eu"} onClick={() => setShipsFrom("non_eu")} title="Seller country is known and outside the EU">
+              <span>🌍 Outside EU</span>
+            </Pill>
+          </div>
+        )}
 
         {/* Sort */}
         <div className="flex flex-wrap items-center gap-2">
@@ -233,8 +485,10 @@ export default function HistoryBoard({ listings, currency, showShipping, vertica
           <Pill active={sortMode === "vs_est_desc"} onClick={() => setSortMode("vs_est_desc")} title="Most above estimate first">vs Est +</Pill>
         </div>
 
-        {/* Systembolaget filter — only relevant when displaying in SEK */}
-        {currency === "SEK" && (
+        {/* Systembolaget filter — wine vertical only, and only relevant
+            when displaying in SEK. SB pris doesn't apply to jewellery /
+            watches so the row is hidden for non-wine. */}
+        {isWine && currency === "SEK" && (
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-neutral-500 shrink-0 w-16">SB</span>
             <Pill active={onlyInSB} onClick={() => setOnlyInSB((v) => !v)} title="Only show lots with a Systembolaget retail price">

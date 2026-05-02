@@ -8,10 +8,20 @@ import { redirect } from "next/navigation";
 import type { HistoryListing } from "@/lib/types";
 import { DEFAULT_SETTINGS } from "@/lib/types";
 import HistoryBoard from "../history-board";
+import type { CategoryDef } from "@/app/dashboard/listings-board";
 import AppHeader from "@/components/app-header";
 import { buildNavLinks } from "@/lib/nav-links";
 
 const VERTICAL = "jewellery";
+
+// Mirrors the Deals jewellery dashboard so History shows the same pill row.
+// See app/dashboard/jewellery/page.tsx for ID rationale.
+const JEWELLERY_CATEGORIES: CategoryDef[] = [
+  { id: null, label: "All",      icon: "💎" },
+  { id: 715,  label: "Diamonds", icon: "💎" },
+  { id: 313,  subcategoryId: 1660, label: "Gold",   icon: "🟡" },
+  { id: 313,  subcategoryId: 841,  label: "Silver", icon: "⚪" },
+];
 
 export const metadata = { title: "Jewellery history – Nimbridge" };
 
@@ -60,7 +70,13 @@ export default async function JewelleryHistoryPage() {
         displayName={displayName}
         role={identity.role}
       />
-      <HistoryBoard listings={allListings} currency={currency} showShipping={showShipping} vertical={VERTICAL} />
+      <HistoryBoard
+        listings={allListings}
+        currency={currency}
+        showShipping={showShipping}
+        vertical={VERTICAL}
+        categories={JEWELLERY_CATEGORIES}
+      />
     </div>
   );
 }

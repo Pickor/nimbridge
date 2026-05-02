@@ -8,10 +8,19 @@ import { redirect } from "next/navigation";
 import type { HistoryListing } from "@/lib/types";
 import { DEFAULT_SETTINGS } from "@/lib/types";
 import HistoryBoard from "../history-board";
+import type { CategoryDef } from "@/app/dashboard/listings-board";
 import AppHeader from "@/components/app-header";
 import { buildNavLinks } from "@/lib/nav-links";
 
 const VERTICAL = "watches";
+
+// Mirrors the Deals watches dashboard so History shows the same pill row.
+// Watches main category 333; brand subcategories pre-set on each pill.
+const WATCHES_CATEGORIES: CategoryDef[] = [
+  { id: null, label: "All",   icon: "⌚" },
+  { id: 333,  subcategoryId: 343, label: "Rolex", icon: "⌚" },
+  { id: 333,  subcategoryId: 697, label: "Omega", icon: "⌚" },
+];
 
 export const metadata = { title: "Watches history – Nimbridge" };
 
@@ -60,7 +69,13 @@ export default async function WatchesHistoryPage() {
         displayName={displayName}
         role={identity.role}
       />
-      <HistoryBoard listings={allListings} currency={currency} showShipping={showShipping} vertical={VERTICAL} />
+      <HistoryBoard
+        listings={allListings}
+        currency={currency}
+        showShipping={showShipping}
+        vertical={VERTICAL}
+        categories={WATCHES_CATEGORIES}
+      />
     </div>
   );
 }
