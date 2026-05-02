@@ -76,24 +76,57 @@ export default function AppHeader({ brand, links, email, displayName, role }: Pr
         {email && <UserMenu email={email} displayName={displayName} role={role} />}
       </div>
 
-      {/* ── Mobile nav — top-level only; groups link to their first child ── */}
-      <nav className="sm:hidden flex border-t border-neutral-800">
+      {/* ── Mobile nav ──
+          Flat links render as plain tabs. Group items render a <details>
+          whose <summary> *is* the tab; tapping it opens a full-width
+          dropdown panel with the children. The shared `name="nav-mobile"`
+          makes the two groups mutually exclusive (Deals open closes
+          History and vice versa). */}
+      <nav className="sm:hidden flex border-t border-neutral-800 relative">
         {links.map((item) => {
-          const href = item.kind === "link" ? item.href : item.children[0].href;
-          const key = item.kind === "link" ? item.href : item.label;
+          if (item.kind === "link") {
+            return (
+              <a
+                key={item.href}
+                href={item.href}
+                className={[
+                  "flex-1 text-center py-2.5 text-xs font-medium transition-colors",
+                  item.active
+                    ? "text-white border-b-2 border-white"
+                    : "text-neutral-400 hover:text-white border-b-2 border-transparent",
+                ].join(" ")}
+              >
+                {item.label}
+              </a>
+            );
+          }
+          // Group → tap opens a panel under the tab strip with the children.
           return (
-            <a
-              key={key}
-              href={href}
-              className={[
-                "flex-1 text-center py-2.5 text-xs font-medium transition-colors",
-                item.active
-                  ? "text-white border-b-2 border-white"
-                  : "text-neutral-400 hover:text-white border-b-2 border-transparent",
-              ].join(" ")}
-            >
-              {item.label}
-            </a>
+            <details key={item.label} name="nav-mobile" className="flex-1 group">
+              <summary
+                className={[
+                  "list-none cursor-pointer select-none py-2.5 text-center text-xs font-medium transition-colors flex items-center justify-center gap-1",
+                  item.active
+                    ? "text-white border-b-2 border-white"
+                    : "text-neutral-400 hover:text-white border-b-2 border-transparent",
+                ].join(" ")}
+              >
+                {item.label}
+                <span aria-hidden className="text-[10px] group-open:rotate-180 transition-transform">▾</span>
+              </summary>
+              {/* Panel below the whole tab strip; absolute so it overlays page content. */}
+              <div className="absolute top-full left-0 right-0 z-50 bg-neutral-900 border-b border-neutral-800 shadow-xl">
+                {item.children.map((child) => (
+                  <a
+                    key={child.href}
+                    href={child.href}
+                    className="block px-4 py-3 text-sm text-neutral-300 hover:bg-neutral-800 hover:text-white border-b border-neutral-800 last:border-b-0 transition-colors"
+                  >
+                    {child.label}
+                  </a>
+                ))}
+              </div>
+            </details>
           );
         })}
       </nav>
