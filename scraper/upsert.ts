@@ -8,6 +8,7 @@ import {
   getCachedCellarTrackerScore,
 } from "./cellartracker";
 import { verticalOfCategory } from "./verticals";
+import { extractWeightGrams } from "../lib/jewellery-value";
 
 function makeClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -76,6 +77,10 @@ export async function upsertLots(
         category: verticalOfCategory(lot.catawiki_category_id),
         shipping_cost_eur: lot.shipping_cost_eur,
         specifications: lot.specifications ?? undefined,
+        // Pre-parse weight in grams so the dashboard's "last price" match
+        // (Karat + Weight for jewellery) can use a numeric column instead
+        // of regex-scanning titles at query time.
+        weight_g: extractWeightGrams(lot.title, lot.specifications) ?? undefined,
         is_active: true,
         last_seen_at: now,
         ...(vivinoVintageId !== null && {
@@ -145,7 +150,7 @@ const CLOSING_FIELDS =
   "shipping_cost_eur, catawiki_category_id, catawiki_subcategory_id, " +
   "category, seller_country, sb_price, sb_product_id, ends_at, " +
   "vivino_vintage_id, vivino_rating_avg, vivino_rating_count, " +
-  "cellartracker_score";
+  "cellartracker_score, weight_g";
 
 async function archiveLot(
   db: ReturnType<typeof makeClient>,
@@ -182,6 +187,7 @@ async function archiveLot(
       vivino_rating_avg:       row.vivino_rating_avg,
       vivino_rating_count:     row.vivino_rating_count,
       cellartracker_score:     row.cellartracker_score,
+      weight_g:                row.weight_g,
     },
     { onConflict: "catawiki_id", ignoreDuplicates: true },
   );
@@ -211,6 +217,7 @@ export async function markInactive(
     shipping_cost_eur: number | null; catawiki_category_id: number | null;
     catawiki_subcategory_id: number | null; category: string | null;
     seller_country: string | null;
+    weight_g: number | null;
     sb_price: number | null;
     sb_product_id: string | null; ends_at: string;
     vivino_vintage_id: number | null; vivino_rating_avg: number | null;
