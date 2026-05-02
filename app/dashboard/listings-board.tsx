@@ -146,6 +146,11 @@ const BUCKET_FILTERS = [
 
 // ── Filter + sort logic ────────────────────────────────────────────────────
 
+/** Catawiki prefixes lots without a reserve with "No reserve price - …". */
+function isNoReserve(title: string): boolean {
+  return /^\s*no\s*reserve(\s*price)?\s*[-–]/i.test(title);
+}
+
 function applyFilters(
   buckets: BucketData,
   categoryId: number | null,
@@ -155,6 +160,7 @@ function applyFilters(
   activeVintagePresets: Set<number>,
   search: string,
   requireLastPrice: boolean,
+  requireNoReserve: boolean,
 ): BucketData {
   const q = search.trim().toLowerCase();
   const filterList = (list: ClassifiedListing[]) =>
@@ -163,6 +169,7 @@ function applyFilters(
       if (categoryId !== null && subcategoryId !== null && l.catawiki_subcategory_id !== subcategoryId) return false;
       if (q && !l.title.toLowerCase().includes(q)) return false;
       if (requireLastPrice && l.last_auction_price == null) return false;
+      if (requireNoReserve && !isNoReserve(l.title)) return false;
 
       if (activePricePresets.size > 0) {
         const bid = l.current_bid ?? 0;
@@ -282,6 +289,7 @@ export default function ListingsBoard({
   const [sortMode, setSortMode]           = useState<SortMode>("end_time");
   const [activeBuckets, setActiveBuckets] = useState<Set<string>>(new Set());
   const [requireLastPrice, setRequireLastPrice] = useState(false);
+  const [requireNoReserve, setRequireNoReserve] = useState(false);
   const [search, setSearch]               = useState("");
 
   const [showTopBtn, setShowTopBtn] = useState(false);
@@ -332,7 +340,7 @@ export default function ListingsBoard({
   const filtered = applyFilters(
     buckets, activeCategoryId, activeSubcategoryId,
     activePricePresets, activeBuckets, activeVintagePresets,
-    search, requireLastPrice,
+    search, requireLastPrice, requireNoReserve,
   );
 
   const sorted: BucketData = {
@@ -477,8 +485,12 @@ export default function ListingsBoard({
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-neutral-500 shrink-0 w-16">Show only</span>
             <Pill
-              active={activeBuckets.size === 0 && !requireLastPrice}
-              onClick={() => { setActiveBuckets(new Set()); setRequireLastPrice(false); }}
+              active={activeBuckets.size === 0 && !requireLastPrice && !requireNoReserve}
+              onClick={() => {
+                setActiveBuckets(new Set());
+                setRequireLastPrice(false);
+                setRequireNoReserve(false);
+              }}
             >
               All
             </Pill>
@@ -495,6 +507,14 @@ export default function ListingsBoard({
             >
               <span>💰 Last price</span>
               <span className="hidden sm:inline text-neutral-500 ml-1">· has prior</span>
+            </Pill>
+            <Pill
+              active={requireNoReserve}
+              onClick={() => setRequireNoReserve((p) => !p)}
+              title='Lots whose title starts with "No reserve price"'
+            >
+              <span>🟢 No reserve</span>
+              <span className="hidden sm:inline text-neutral-500 ml-1">· always sells</span>
             </Pill>
           </div>
 
