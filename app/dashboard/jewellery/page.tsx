@@ -13,12 +13,22 @@ import { getIdentity, hasLevel, ROLE_LEVEL } from "@/lib/admin/roles";
 import { redirect } from "next/navigation";
 import type { ClassifiedListing, BucketData } from "@/lib/types";
 import { DEFAULT_SETTINGS } from "@/lib/types";
-import ListingsBoard from "../listings-board";
+import ListingsBoard, { type CategoryDef } from "../listings-board";
 import StatusBar from "@/components/status-bar";
 import AppHeader from "@/components/app-header";
 import { buildNavLinks } from "@/lib/nav-links";
 
 const VERTICAL = "jewellery";
+
+// Pills shown in the Category row. Diamonds is its own top-level category
+// (715); Gold (1660) and Silver (841) are subcategories of Jewellery (313)
+// — flatten them by pre-setting subcategoryId so the click maps directly.
+const JEWELLERY_CATEGORIES: CategoryDef[] = [
+  { id: null, label: "All",      icon: "💎" },
+  { id: 715,  label: "Diamonds", icon: "💎" },
+  { id: 313,  subcategoryId: 1660, label: "Gold",   icon: "🟡" },
+  { id: 313,  subcategoryId: 841,  label: "Silver", icon: "⚪" },
+];
 
 export const metadata = { title: "Jewellery – Nimbridge" };
 
@@ -108,6 +118,7 @@ export default async function JewelleryDealsPage() {
         currency={currency}
         showShipping={showShipping}
         category={VERTICAL}
+        categories={JEWELLERY_CATEGORIES}
       />
     </div>
   );

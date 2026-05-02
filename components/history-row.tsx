@@ -53,9 +53,12 @@ interface Props {
   listing: HistoryListing;
   currency: string;
   showShipping: boolean;
+  /** Vertical the row belongs to. Hides Rating + SB pris on non-wine. */
+  vertical?: "wine-whisky-spirits" | "jewellery" | "watches" | "apple";
 }
 
-export default function HistoryRow({ listing, currency, showShipping }: Props) {
+export default function HistoryRow({ listing, currency, showShipping, vertical = "wine-whisky-spirits" }: Props) {
+  const isWine = vertical === "wine-whisky-spirits";
   const final       = listing.final_price;
   const withPremium = final * PREMIUM;
   const shipping    = listing.shipping_cost_eur ?? null;
@@ -187,55 +190,57 @@ export default function HistoryRow({ listing, currency, showShipping }: Props) {
         )}
       </td>
 
-      {/* Vivino rating */}
-      <td className="py-2 pr-3 text-right align-top whitespace-nowrap">
-        {listing.vivino_rating_avg != null || listing.cellartracker_score != null ? (
-          <div className="flex flex-col items-end gap-0.5">
-            {listing.vivino_rating_avg != null && (
-              <a
-                href={vivinoSearchUrl(listing.title)}
-                target="_blank"
-                rel="noopener noreferrer"
-                title="Search this wine on Vivino"
-                className="text-xs font-medium text-amber-400 hover:text-amber-300 tabular-nums transition-colors"
-              >
-                {listing.vivino_rating_avg.toFixed(1)} ★ <span className="text-[9px] text-neutral-500">VV</span>
-              </a>
-            )}
-            {listing.cellartracker_score != null && (
-              <a
-                href={cellartrackerSearchUrl(listing.title)}
-                target="_blank"
-                rel="noopener noreferrer"
-                title="Search this wine on CellarTracker"
-                className="text-xs font-medium text-violet-400 hover:text-violet-300 tabular-nums transition-colors"
-              >
-                {listing.cellartracker_score.toFixed(1)} <span className="text-[9px] text-neutral-500">CT</span>
-              </a>
-            )}
-          </div>
-        ) : (
-          <span className="text-neutral-700 text-xs">—</span>
-        )}
-      </td>
+      {/* Vivino + CellarTracker — wine only */}
+      {isWine && (
+        <td className="py-2 pr-3 text-right align-top whitespace-nowrap">
+          {listing.vivino_rating_avg != null || listing.cellartracker_score != null ? (
+            <div className="flex flex-col items-end gap-0.5">
+              {listing.vivino_rating_avg != null && (
+                <a
+                  href={vivinoSearchUrl(listing.title)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Search this wine on Vivino"
+                  className="text-xs font-medium text-amber-400 hover:text-amber-300 tabular-nums transition-colors"
+                >
+                  {listing.vivino_rating_avg.toFixed(1)} ★ <span className="text-[9px] text-neutral-500">VV</span>
+                </a>
+              )}
+              {listing.cellartracker_score != null && (
+                <a
+                  href={cellartrackerSearchUrl(listing.title)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Search this wine on CellarTracker"
+                  className="text-xs font-medium text-violet-400 hover:text-violet-300 tabular-nums transition-colors"
+                >
+                  {listing.cellartracker_score.toFixed(1)} <span className="text-[9px] text-neutral-500">CT</span>
+                </a>
+              )}
+            </div>
+          ) : (
+            <span className="text-neutral-700 text-xs">—</span>
+          )}
+        </td>
+      )}
 
-      {/* Systembolaget retail price — only when displaying in SEK */}
-      {currency === "SEK" && (
-      <td className="py-2 pr-3 text-right align-top whitespace-nowrap">
-        {listing.sb_price != null ? (
-          <a
-            href={systembolagetSearchUrl(listing.title)}
-            target="_blank"
-            rel="noopener noreferrer"
-            title="Systembolaget retail price — click to search"
-            className="text-xs font-medium text-blue-400 hover:text-blue-300 tabular-nums transition-colors"
-          >
-            {fSek(listing.sb_price)}
-          </a>
-        ) : (
-          <span className="text-neutral-700 text-xs">—</span>
-        )}
-      </td>
+      {/* Systembolaget retail price — wine + SEK only */}
+      {isWine && currency === "SEK" && (
+        <td className="py-2 pr-3 text-right align-top whitespace-nowrap">
+          {listing.sb_price != null ? (
+            <a
+              href={systembolagetSearchUrl(listing.title)}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Systembolaget retail price — click to search"
+              className="text-xs font-medium text-blue-400 hover:text-blue-300 tabular-nums transition-colors"
+            >
+              {fSek(listing.sb_price)}
+            </a>
+          ) : (
+            <span className="text-neutral-700 text-xs">—</span>
+          )}
+        </td>
       )}
 
     </tr>

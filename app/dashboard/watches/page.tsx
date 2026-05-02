@@ -8,12 +8,19 @@ import { getIdentity, hasLevel, ROLE_LEVEL } from "@/lib/admin/roles";
 import { redirect } from "next/navigation";
 import type { ClassifiedListing, BucketData } from "@/lib/types";
 import { DEFAULT_SETTINGS } from "@/lib/types";
-import ListingsBoard from "../listings-board";
+import ListingsBoard, { type CategoryDef } from "../listings-board";
 import StatusBar from "@/components/status-bar";
 import AppHeader from "@/components/app-header";
 import { buildNavLinks } from "@/lib/nav-links";
 
 const VERTICAL = "watches";
+
+// Watches main category is 333; brand subcategories are pre-set on each pill.
+const WATCHES_CATEGORIES: CategoryDef[] = [
+  { id: null, label: "All",   icon: "⌚" },
+  { id: 333,  subcategoryId: 343, label: "Rolex", icon: "⌚" },
+  { id: 333,  subcategoryId: 697, label: "Omega", icon: "⌚" },
+];
 
 export const metadata = { title: "Watches – Nimbridge" };
 
@@ -103,6 +110,7 @@ export default async function WatchesDealsPage() {
         currency={currency}
         showShipping={showShipping}
         category={VERTICAL}
+        categories={WATCHES_CATEGORIES}
       />
     </div>
   );

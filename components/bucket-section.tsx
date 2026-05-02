@@ -21,6 +21,11 @@ interface Props {
   emptyMessage: string;
   currency: string;
   showShipping: boolean;
+  /**
+   * Vertical the lots in this bucket belong to. Determines which columns
+   * appear in the table (jewellery hides Rating + SB pris, shows Value).
+   */
+  vertical?: "wine-whisky-spirits" | "jewellery" | "watches" | "apple";
 }
 
 const accentClass = {
@@ -108,8 +113,11 @@ export default function BucketSection({
   emptyMessage,
   currency,
   showShipping,
+  vertical = "wine-whisky-spirits",
 }: Props) {
   const { containerRef, zoom } = useTablePinchZoom();
+  const isWine = vertical === "wine-whisky-spirits";
+  const isJewellery = vertical === "jewellery";
   return (
     <details open className="group">
       <summary
@@ -154,9 +162,14 @@ export default function BucketSection({
                     <th className="py-2 pr-3 text-xs font-medium text-neutral-400 text-right whitespace-nowrap">Total {currency}</th>
                   )}
                   <th className="py-2 pr-3 text-xs font-medium text-neutral-400 text-right whitespace-nowrap">Last price</th>
-                  <th className="py-2 pr-3 text-xs font-medium text-neutral-400 text-right whitespace-nowrap">Rating</th>
-                  {currency === "SEK" && (
+                  {isWine && (
+                    <th className="py-2 pr-3 text-xs font-medium text-neutral-400 text-right whitespace-nowrap">Rating</th>
+                  )}
+                  {isWine && currency === "SEK" && (
                     <th className="py-2 pr-3 text-xs font-medium text-neutral-400 text-right whitespace-nowrap">SB pris</th>
+                  )}
+                  {isJewellery && (
+                    <th className="py-2 pr-3 text-xs font-medium text-neutral-400 text-right whitespace-nowrap">Value</th>
                   )}
                   <th className="py-2 pr-3 text-xs font-medium text-neutral-400 text-right whitespace-nowrap">Estimate</th>
                   <th className="py-2 pr-3 text-xs font-medium text-neutral-400 text-right whitespace-nowrap">vs Est</th>
@@ -173,6 +186,7 @@ export default function BucketSection({
                     onToggleFavorite={onToggleFavorite}
                     currency={currency}
                     showShipping={showShipping}
+                    vertical={vertical}
                   />
                 ))}
               </tbody>

@@ -18,6 +18,7 @@ import FavoriteButton from "./favorite-button";
 import Countdown from "./countdown";
 import { fAmount } from "@/lib/currency";
 import { vivinoSearchUrl, cellartrackerSearchUrl, systembolagetSearchUrl } from "@/lib/wine-links";
+import { estimateJewelleryValueEur } from "@/lib/jewellery-value";
 
 // Catawiki adds a 9% buyer's premium to every winning bid.
 const PREMIUM = 1.09;
@@ -50,12 +51,31 @@ interface Props {
   onToggleFavorite: (id: string, isFav: boolean) => void;
   currency: string;
   showShipping: boolean;
+  /**
+   * Vertical the lot belongs to. Drives which extra columns appear
+   * (Rating + SB pris are wine-only; Value is jewellery-only).
+   */
+  vertical?: "wine-whisky-spirits" | "jewellery" | "watches" | "apple";
 }
 
-export default function ListingRow({ listing, isFavorite, onToggleFavorite, currency, showShipping }: Props) {
+export default function ListingRow({
+  listing, isFavorite, onToggleFavorite, currency, showShipping,
+  vertical = "wine-whisky-spirits",
+}: Props) {
+  const isWine = vertical === "wine-whisky-spirits";
+  const isJewellery = vertical === "jewellery";
   const bid = listing.current_bid;
   const withPremium = bid !== null ? bid * PREMIUM : null;
   const shipping = listing.shipping_cost_eur ?? null;
+  // Material/stone valuation for jewellery, in EUR. Null when title doesn't
+  // match a known parser (e.g. coloured gem, complex piece without weight).
+  const valueEur = isJewellery
+    ? estimateJewelleryValueEur(
+        listing.title,
+        listing.catawiki_category_id,
+        listing.catawiki_subcategory_id,
+      )
+    : null;
   const estText =
     listing.estimated_low !== null && listing.estimated_high !== null
       ? `${fEur(listing.estimated_low)}–${fEur(listing.estimated_high)}`
@@ -160,40 +180,42 @@ export default function ListingRow({ listing, isFavorite, onToggleFavorite, curr
         )}
       </td>
 
-      {/* Vivino rating */}
-      <td className="py-2 pr-3 text-right align-top whitespace-nowrap">
-        {listing.vivino_rating_avg != null || listing.cellartracker_score != null ? (
-          <div className="flex flex-col items-end gap-0.5">
-            {listing.vivino_rating_avg != null && (
-              <a
-                href={vivinoSearchUrl(listing.title)}
-                target="_blank"
-                rel="noopener noreferrer"
-                title="Search this wine on Vivino"
-                className="text-xs font-medium text-amber-400 hover:text-amber-300 tabular-nums transition-colors"
-              >
-                {listing.vivino_rating_avg.toFixed(1)} ★ <span className="text-[9px] text-neutral-500">VV</span>
-              </a>
-            )}
-            {listing.cellartracker_score != null && (
-              <a
-                href={cellartrackerSearchUrl(listing.title)}
-                target="_blank"
-                rel="noopener noreferrer"
-                title="Search this wine on CellarTracker"
-                className="text-xs font-medium text-violet-400 hover:text-violet-300 tabular-nums transition-colors"
-              >
-                {listing.cellartracker_score.toFixed(1)} <span className="text-[9px] text-neutral-500">CT</span>
-              </a>
-            )}
-          </div>
-        ) : (
-          <span className="text-neutral-700 text-xs">—</span>
-        )}
-      </td>
+      {/* Vivino + CellarTracker ratings — wine only */}
+      {isWine && (
+        <td className="py-2 pr-3 text-right align-top whitespace-nowrap">
+          {listing.vivino_rating_avg != null || listing.cellartracker_score != null ? (
+            <div className="flex flex-col items-end gap-0.5">
+              {listing.vivino_rating_avg != null && (
+                <a
+                  href={vivinoSearchUrl(listing.title)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Search this wine on Vivino"
+                  className="text-xs font-medium text-amber-400 hover:text-amber-300 tabular-nums transition-colors"
+                >
+                  {listing.vivino_rating_avg.toFixed(1)} ★ <span className="text-[9px] text-neutral-500">VV</span>
+                </a>
+              )}
+              {listing.cellartracker_score != null && (
+                <a
+                  href={cellartrackerSearchUrl(listing.title)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Search this wine on CellarTracker"
+                  className="text-xs font-medium text-violet-400 hover:text-violet-300 tabular-nums transition-colors"
+                >
+                  {listing.cellartracker_score.toFixed(1)} <span className="text-[9px] text-neutral-500">CT</span>
+                </a>
+              )}
+            </div>
+          ) : (
+            <span className="text-neutral-700 text-xs">—</span>
+          )}
+        </td>
+      )}
 
-      {/* Systembolaget retail price — only when displaying in SEK */}
-      {currency === "SEK" && (
+      {/* Systembolaget retail price — wine only, and only when displaying in SEK */}
+      {isWine && currency === "SEK" && (
         <td className="py-2 pr-3 text-right align-top whitespace-nowrap">
           {listing.sb_price != null ? (
             <a
@@ -205,6 +227,22 @@ export default function ListingRow({ listing, isFavorite, onToggleFavorite, curr
             >
               {fSek(listing.sb_price)}
             </a>
+          ) : (
+            <span className="text-neutral-700 text-xs">—</span>
+          )}
+        </td>
+      )}
+
+      {/* Estimated material / stone value — jewellery only */}
+      {isJewellery && (
+        <td className="py-2 pr-3 text-right align-top whitespace-nowrap">
+          {valueEur != null ? (
+            <div
+              className="text-xs font-medium text-cyan-400 tabular-nums"
+              title="Rough material / stone value from title parsing — sanity check, not an appraisal"
+            >
+              {fAmount(valueEur, currency)}
+            </div>
           ) : (
             <span className="text-neutral-700 text-xs">—</span>
           )}

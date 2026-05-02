@@ -6,14 +6,22 @@ import BucketSection from "@/components/bucket-section";
 
 // ── Category / subcategory config ─────────────────────────────────────────
 
-interface CategoryDef {
+/**
+ * Filter pill definition. Two shapes:
+ *  - top-level with optional drill-down `subcategories` (Wine → Bordeaux/…)
+ *  - flattened pill that pre-fixes both `id` and `subcategoryId` and skips
+ *    the drill-down row (Jewellery → Gold uses cat=313 sub=1660 directly).
+ */
+export interface CategoryDef {
   id: number | null;
+  /** When set, clicking the pill applies BOTH this categoryId AND this subcategoryId, and the drill-down row is hidden. */
+  subcategoryId?: number | null;
   label: string;
   icon: string;
   subcategories?: { id: number | null; label: string }[];
 }
 
-const CATEGORIES: CategoryDef[] = [
+const WINE_CATEGORIES: CategoryDef[] = [
   { id: null, label: "All", icon: "🌐" },
   {
     id: 437,
@@ -78,6 +86,9 @@ const CATEGORIES: CategoryDef[] = [
   },
   { id: 963, label: "Beer", icon: "🍺" },
 ];
+
+/** Default fallback so legacy callers (the wine page) don't have to pass it. */
+export const DEFAULT_CATEGORIES = WINE_CATEGORIES;
 
 // ── Price preset config ────────────────────────────────────────────────────
 
@@ -248,6 +259,8 @@ interface Props {
    * dashboards.
    */
   category?: string;
+  /** Filter pills shown in the top "Category" row. Defaults to wine. */
+  categories?: CategoryDef[];
 }
 
 export default function ListingsBoard({
@@ -256,6 +269,7 @@ export default function ListingsBoard({
   currency,
   showShipping,
   category = "wine-whisky-spirits",
+  categories = DEFAULT_CATEGORIES,
 }: Props) {
   const [buckets, setBuckets]         = useState<BucketData>(initialBuckets);
   const [favoriteIds, setFavoriteIds] = useState(new Set(initialFavoriteIds));
@@ -314,7 +328,7 @@ export default function ListingsBoard({
     });
   };
 
-  const activeCategory = CATEGORIES.find((c) => c.id === activeCategoryId) ?? null;
+  const activeCategory = categories.find((c) => c.id === activeCategoryId) ?? null;
   const filtered = applyFilters(
     buckets, activeCategoryId, activeSubcategoryId,
     activePricePresets, activeBuckets, activeVintagePresets,
@@ -350,26 +364,38 @@ export default function ListingsBoard({
           className="w-full sm:w-80 px-3 py-1.5 rounded-lg bg-neutral-800 border border-neutral-700 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:border-neutral-500"
         />
 
-        {/* Row 1: category pills */}
+        {/* Row 1: category pills.
+            For pills with `subcategoryId` pre-set (jewellery Gold/Silver,
+            watches Rolex/Omega), clicking applies both ids and we skip
+            the drill-down row below. Pills without it behave like before. */}
         <div className="flex flex-wrap gap-2">
-          {CATEGORIES.map((cat) => (
-            <button
-              key={cat.id ?? "all"}
-              onClick={() => { setActiveCategoryId(cat.id); setActiveSubcategoryId(null); }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm transition-colors ${
-                activeCategoryId === cat.id
-                  ? "bg-white text-black font-medium"
-                  : "bg-neutral-800 text-neutral-300 hover:bg-neutral-700"
-              }`}
-            >
-              <span>{cat.icon}</span>
-              <span>{cat.label}</span>
-            </button>
-          ))}
+          {categories.map((cat) => {
+            const active =
+              activeCategoryId === cat.id &&
+              (cat.subcategoryId === undefined || activeSubcategoryId === (cat.subcategoryId ?? null));
+            return (
+              <button
+                key={`${cat.id ?? "all"}:${cat.subcategoryId ?? ""}`}
+                onClick={() => {
+                  setActiveCategoryId(cat.id);
+                  setActiveSubcategoryId(cat.subcategoryId ?? null);
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm transition-colors ${
+                  active
+                    ? "bg-white text-black font-medium"
+                    : "bg-neutral-800 text-neutral-300 hover:bg-neutral-700"
+                }`}
+              >
+                <span>{cat.icon}</span>
+                <span>{cat.label}</span>
+              </button>
+            );
+          })}
         </div>
 
-        {/* Row 2: subcategory pills (conditional) */}
-        {activeCategory?.subcategories && (
+        {/* Row 2: subcategory pills (only for top-level pills WITHOUT a
+            preset subcategoryId — i.e. wine-style drill-down). */}
+        {activeCategory?.subcategories && activeCategory.subcategoryId === undefined && (
           <div className="flex flex-wrap gap-2 pl-1">
             {activeCategory.subcategories.map((sub) => (
               <button
@@ -513,14 +539,28 @@ export default function ListingsBoard({
             <dt className="font-medium text-purple-400 min-w-[110px] shrink-0">Last price</dt>
             <dd className="text-neutral-400">Last winning price for the same or similar lot, with the closing date</dd>
           </div>
-          <div className="flex gap-2">
-            <dt className="font-medium min-w-[110px] shrink-0"><span className="text-amber-400">VV ★</span> / <span className="text-violet-400">CT</span></dt>
-            <dd className="text-neutral-400">Vivino ★ (out of 5) and CellarTracker (out of 100) community ratings</dd>
-          </div>
-          {currency === "SEK" && (
+          {category === "wine-whisky-spirits" && (
+            <div className="flex gap-2">
+              <dt className="font-medium min-w-[110px] shrink-0"><span className="text-amber-400">VV ★</span> / <span className="text-violet-400">CT</span></dt>
+              <dd className="text-neutral-400">Vivino ★ (out of 5) and CellarTracker (out of 100) community ratings</dd>
+            </div>
+          )}
+          {category === "wine-whisky-spirits" && currency === "SEK" && (
             <div className="flex gap-2">
               <dt className="font-medium text-blue-400 min-w-[110px] shrink-0">SB pris</dt>
               <dd className="text-neutral-400">Systembolaget retail price — click to search the SB catalogue</dd>
+            </div>
+          )}
+          {category === "jewellery" && (
+            <div className="flex gap-2">
+              <dt className="font-medium text-cyan-400 min-w-[110px] shrink-0">Value</dt>
+              <dd className="text-neutral-400">
+                Rough material / stone value from title parsing.
+                Diamonds: per-carat USD chart by color &amp; clarity.
+                Gold: SEK/g by karat (London Fix).
+                Silver: SEK/g by purity (London Fix).
+                Sanity check, not an appraisal — null when the title can&apos;t be parsed.
+              </dd>
             </div>
           )}
           <div className="flex gap-2">
@@ -563,6 +603,7 @@ export default function ListingsBoard({
           emptyMessage="No lots ending within 6 hours without bids right now."
           currency={currency}
           showShipping={showShipping}
+          vertical={category as "wine-whisky-spirits" | "jewellery" | "watches" | "apple"}
         />
       )}
       {(activeBuckets.size === 0 || activeBuckets.has("low_price")) && (
@@ -575,6 +616,7 @@ export default function ListingsBoard({
           emptyMessage="No lots at ≥50% below estimate right now."
           currency={currency}
           showShipping={showShipping}
+          vertical={category as "wine-whisky-spirits" | "jewellery" | "watches" | "apple"}
         />
       )}
       {(activeBuckets.size === 0 || activeBuckets.has("good_price")) && (
@@ -587,6 +629,7 @@ export default function ListingsBoard({
           emptyMessage="No lots at 30–50% below estimate right now."
           currency={currency}
           showShipping={showShipping}
+          vertical={category as "wine-whisky-spirits" | "jewellery" | "watches" | "apple"}
         />
       )}
       {(activeBuckets.size === 0 || activeBuckets.has("ok_price")) && (
@@ -599,6 +642,7 @@ export default function ListingsBoard({
           emptyMessage="No lots at 10–30% below estimate right now."
           currency={currency}
           showShipping={showShipping}
+          vertical={category as "wine-whisky-spirits" | "jewellery" | "watches" | "apple"}
         />
       )}
       {(activeBuckets.size === 0 || activeBuckets.has("overpriced")) && (
@@ -611,6 +655,7 @@ export default function ListingsBoard({
           emptyMessage="No lots more than 15% above the high estimate right now."
           currency={currency}
           showShipping={showShipping}
+          vertical={category as "wine-whisky-spirits" | "jewellery" | "watches" | "apple"}
         />
       )}
       {(activeBuckets.size === 0 || activeBuckets.has("rest")) && (
@@ -623,6 +668,7 @@ export default function ListingsBoard({
           emptyMessage="No unclassified active lots right now."
           currency={currency}
           showShipping={showShipping}
+          vertical={category as "wine-whisky-spirits" | "jewellery" | "watches" | "apple"}
         />
       )}
     </main>

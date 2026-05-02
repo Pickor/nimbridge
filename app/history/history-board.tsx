@@ -85,9 +85,12 @@ interface Props {
   listings: HistoryListing[];
   currency: string;
   showShipping: boolean;
+  /** Vertical the rows belong to. Hides Rating + SB pris on non-wine. */
+  vertical?: "wine-whisky-spirits" | "jewellery" | "watches" | "apple";
 }
 
-export default function HistoryBoard({ listings, currency, showShipping }: Props) {
+export default function HistoryBoard({ listings, currency, showShipping, vertical = "wine-whisky-spirits" }: Props) {
+  const isWine = vertical === "wine-whisky-spirits";
   const [categoryId, setCategoryId]   = useState<number | null>(null);
   const [outcome, setOutcome]         = useState<LotOutcome | "all">("all");
   const [sortMode, setSortMode]       = useState<SortMode>("date_desc");
@@ -279,8 +282,10 @@ export default function HistoryBoard({ listings, currency, showShipping }: Props
                   <th className="py-2 pr-3 text-xs font-medium text-neutral-400 text-right whitespace-nowrap">Bids</th>
                   <th className="py-2 pr-3 text-xs font-medium text-neutral-400 text-right whitespace-nowrap">Bidders</th>
                   <th className="py-2 pr-3 text-xs font-medium text-neutral-400 text-right whitespace-nowrap">Result</th>
-                  <th className="py-2 pr-3 text-xs font-medium text-neutral-400 text-right whitespace-nowrap">Rating</th>
-                  {currency === "SEK" && (
+                  {isWine && (
+                    <th className="py-2 pr-3 text-xs font-medium text-neutral-400 text-right whitespace-nowrap">Rating</th>
+                  )}
+                  {isWine && currency === "SEK" && (
                     <th className="py-2 pr-3 text-xs font-medium text-neutral-400 text-right whitespace-nowrap">SB pris</th>
                   )}
                 </tr>
@@ -292,6 +297,7 @@ export default function HistoryBoard({ listings, currency, showShipping }: Props
                     listing={listing}
                     currency={currency}
                     showShipping={showShipping}
+                    vertical={vertical}
                   />
                 ))}
               </tbody>

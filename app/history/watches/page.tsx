@@ -60,7 +60,7 @@ export default async function WatchesHistoryPage() {
         displayName={displayName}
         role={identity.role}
       />
-      <HistoryBoard listings={allListings} currency={currency} showShipping={showShipping} />
+      <HistoryBoard listings={allListings} currency={currency} showShipping={showShipping} vertical={VERTICAL} />
     </div>
   );
 }
