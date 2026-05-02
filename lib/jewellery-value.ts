@@ -43,24 +43,22 @@ const GOLD_SEK_PER_G: Record<string, number> = {
   "9":    511.33,
 };
 
-function parseGold(title: string): { karat: string; grams: number } | null {
+function parseGoldKarat(title: string): string | null {
   // "18 kt." / "18K" / "18 K" / "14 kt"
   const k = title.match(/\b(\d{1,2}(?:[.,]\d)?)\s*(?:kt|K|karat)\b/i);
-  // " 1.6 g " / "10g" / "12.5 g"
-  const g = title.match(/(?<![A-Za-z])(\d+(?:[.,]\d+)?)\s*g(?:\b|$)/i);
-  if (!k || !g) return null;
-  return {
-    karat: k[1].replace(",", "."),
-    grams: parseFloat(g[1].replace(",", ".")),
-  };
+  return k ? k[1].replace(",", ".") : null;
 }
 
-function valueGoldEur(title: string): number | null {
-  const m = parseGold(title);
-  if (!m) return null;
-  const sekPerG = GOLD_SEK_PER_G[m.karat];
+function valueGoldEur(
+  title: string,
+  specifications: Array<{ name: string; value: string }> | null,
+): number | null {
+  const karat = parseGoldKarat(title);
+  const grams = extractWeightGrams(title, specifications);
+  if (!karat || grams == null) return null;
+  const sekPerG = GOLD_SEK_PER_G[karat];
   if (!sekPerG) return null;
-  return toEur(sekPerG * m.grams, "SEK");
+  return toEur(sekPerG * grams, "SEK");
 }
 
 // ── Silver (SEK / g, London Fix; user's table) ────────────────────────────
@@ -73,23 +71,21 @@ const SILVER_SEK_PER_G: Record<number, number> = {
   900: 20.03,
 };
 
-function parseSilver(title: string): { purity: number; grams: number } | null {
-  // "Silver 925" / "925/1000" / "925 silver"
-  const purityMatch = title.match(/\b(?:silver\s*)?(925|830|900|800|600|400)\b/i);
-  const g = title.match(/(?<![A-Za-z])(\d+(?:[.,]\d+)?)\s*g(?:\b|$)/i);
-  if (!purityMatch || !g) return null;
-  return {
-    purity: parseInt(purityMatch[1], 10),
-    grams: parseFloat(g[1].replace(",", ".")),
-  };
+function parseSilverPurity(title: string): number | null {
+  const m = title.match(/\b(?:silver\s*)?(925|830|900|800|600|400)\b/i);
+  return m ? parseInt(m[1], 10) : null;
 }
 
-function valueSilverEur(title: string): number | null {
-  const m = parseSilver(title);
-  if (!m) return null;
-  const sekPerG = SILVER_SEK_PER_G[m.purity];
+function valueSilverEur(
+  title: string,
+  specifications: Array<{ name: string; value: string }> | null,
+): number | null {
+  const purity = parseSilverPurity(title);
+  const grams = extractWeightGrams(title, specifications);
+  if (!purity || grams == null) return null;
+  const sekPerG = SILVER_SEK_PER_G[purity];
   if (!sekPerG) return null;
-  return toEur(sekPerG * m.grams, "SEK");
+  return toEur(sekPerG * grams, "SEK");
 }
 
 // ── Diamonds (USD / ct, Pricescope-style; round-brilliant midpoints) ──────
@@ -151,6 +147,61 @@ function valueDiamondEur(title: string): number | null {
   return toEur(totalUsd, "USD");
 }
 
+// ── Weight extraction ─────────────────────────────────────────────────────
+
+const WEIGHT_RE = /(?<![A-Za-z])(\d+(?:[.,]\d+)?)\s*(?:g|gr|gram|gramme|gms?)\b/i;
+
+/**
+ * Extract weight in grams from a lot's title or — as fallback — from any of
+ * its Catawiki specifications rows whose name looks weight-y. Returns null
+ * if nothing parseable is found.
+ */
+export function extractWeightGrams(
+  title: string,
+  specifications: Array<{ name: string; value: string }> | null = null,
+): number | null {
+  const fromTitle = title.match(WEIGHT_RE);
+  if (fromTitle) return parseFloat(fromTitle[1].replace(",", "."));
+
+  if (specifications) {
+    for (const s of specifications) {
+      const n = s.name.toLowerCase();
+      if (
+        n.includes("weight") || n.includes("vikt") ||
+        n.includes("gewicht") || n.includes("poids") || n.includes("peso")
+      ) {
+        const m = s.value.match(WEIGHT_RE);
+        if (m) return parseFloat(m[1].replace(",", "."));
+      }
+    }
+  }
+  return null;
+}
+
+// ── Gold colour ───────────────────────────────────────────────────────────
+
+export type GoldColor = "white" | "yellow" | "rose" | "mixed";
+
+/**
+ * Pick out which colour of gold is referenced in a title. Catawiki titles
+ * are explicit about this ("18 kt. Yellow gold"). A title that names two
+ * or more colours, or uses words like "tri-colour" / "mixed gold",
+ * returns "mixed".
+ */
+export function parseGoldColor(title: string): GoldColor | null {
+  const t = title.toLowerCase();
+  if (/\b(bi|tri|two|three)[-\s]colou?red?\b|\bmixed\s*gold\b/.test(t)) return "mixed";
+  const hasWhite  = /\bwhite\s*gold\b/.test(t);
+  const hasYellow = /\byellow\s*gold\b/.test(t);
+  const hasRose   = /\b(?:rose|pink|red)\s*gold\b/.test(t);
+  const count = [hasWhite, hasYellow, hasRose].filter(Boolean).length;
+  if (count > 1) return "mixed";
+  if (hasWhite)  return "white";
+  if (hasYellow) return "yellow";
+  if (hasRose)   return "rose";
+  return null;
+}
+
 // ── Public API ────────────────────────────────────────────────────────────
 
 /**
@@ -162,15 +213,16 @@ export function estimateJewelleryValueEur(
   title: string,
   catawikiCategoryId: number | null,
   catawikiSubcategoryId: number | null,
+  specifications: Array<{ name: string; value: string }> | null = null,
 ): number | null {
-  // Diamonds (own top-level category)
+  // Diamonds (own top-level category) — carat is the weight, no specs needed.
   if (catawikiCategoryId === 715) {
     return valueDiamondEur(title);
   }
-  // Jewellery main; subcategory tells us metal
+  // Jewellery main; subcategory tells us metal.
   if (catawikiCategoryId === 313) {
-    if (catawikiSubcategoryId === 1660) return valueGoldEur(title);
-    if (catawikiSubcategoryId === 841)  return valueSilverEur(title);
+    if (catawikiSubcategoryId === 1660) return valueGoldEur(title, specifications);
+    if (catawikiSubcategoryId === 841)  return valueSilverEur(title, specifications);
   }
   return null;
 }

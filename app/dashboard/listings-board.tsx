@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { BucketData, ClassifiedListing } from "@/lib/types";
 import BucketSection from "@/components/bucket-section";
+import { parseGoldColor, type GoldColor } from "@/lib/jewellery-value";
 
 // ── Category / subcategory config ─────────────────────────────────────────
 
@@ -161,6 +162,7 @@ function applyFilters(
   search: string,
   requireLastPrice: boolean,
   requireNoReserve: boolean,
+  goldColor: GoldColor | null,
 ): BucketData {
   const q = search.trim().toLowerCase();
   const filterList = (list: ClassifiedListing[]) =>
@@ -170,6 +172,8 @@ function applyFilters(
       if (q && !l.title.toLowerCase().includes(q)) return false;
       if (requireLastPrice && l.last_auction_price == null) return false;
       if (requireNoReserve && !isNoReserve(l.title)) return false;
+      // Gold-colour drill-down only matters when the user is in the Gold pill.
+      if (goldColor !== null && parseGoldColor(l.title) !== goldColor) return false;
 
       if (activePricePresets.size > 0) {
         const bid = l.current_bid ?? 0;
@@ -290,6 +294,7 @@ export default function ListingsBoard({
   const [activeBuckets, setActiveBuckets] = useState<Set<string>>(new Set());
   const [requireLastPrice, setRequireLastPrice] = useState(false);
   const [requireNoReserve, setRequireNoReserve] = useState(false);
+  const [goldColor, setGoldColor] = useState<GoldColor | null>(null);
   const [search, setSearch]               = useState("");
 
   const [showTopBtn, setShowTopBtn] = useState(false);
@@ -337,10 +342,16 @@ export default function ListingsBoard({
   };
 
   const activeCategory = categories.find((c) => c.id === activeCategoryId) ?? null;
+  // Gold-colour pill only meaningfully applies when the user is in the Gold
+  // top-level pill (Jewellery → Gold = cat 313 / sub 1660). Treat it as null
+  // otherwise so it doesn't filter out non-gold lots.
+  const inGold = activeCategoryId === 313 && activeSubcategoryId === 1660;
+  const effectiveGoldColor = inGold ? goldColor : null;
+
   const filtered = applyFilters(
     buckets, activeCategoryId, activeSubcategoryId,
     activePricePresets, activeBuckets, activeVintagePresets,
-    search, requireLastPrice, requireNoReserve,
+    search, requireLastPrice, requireNoReserve, effectiveGoldColor,
   );
 
   const sorted: BucketData = {
@@ -387,6 +398,9 @@ export default function ListingsBoard({
                 onClick={() => {
                   setActiveCategoryId(cat.id);
                   setActiveSubcategoryId(cat.subcategoryId ?? null);
+                  // Switching pills clears the Gold-colour drill-down so it
+                  // doesn't silently survive into Diamonds / Silver.
+                  setGoldColor(null);
                 }}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm transition-colors ${
                   active
@@ -416,6 +430,33 @@ export default function ListingsBoard({
                 }`}
               >
                 {sub.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Gold-colour drill-down: only visible when the Gold pill is
+            selected on the jewellery dashboard. Filters by what's parsed
+            from the lot title ("18 kt. Yellow gold"). */}
+        {inGold && (
+          <div className="flex flex-wrap gap-2 pl-1">
+            {([
+              { key: null,     label: "All gold" },
+              { key: "yellow", label: "🟡 Yellow" },
+              { key: "white",  label: "⚪ White" },
+              { key: "rose",   label: "🌹 Rose" },
+              { key: "mixed",  label: "🌈 Mixed" },
+            ] as { key: GoldColor | null; label: string }[]).map((opt) => (
+              <button
+                key={opt.key ?? "all"}
+                onClick={() => setGoldColor(opt.key)}
+                className={`px-2.5 py-1 rounded-full text-xs transition-colors ${
+                  goldColor === opt.key
+                    ? "bg-white text-black font-medium"
+                    : "bg-neutral-800/60 text-neutral-400 hover:bg-neutral-700"
+                }`}
+              >
+                {opt.label}
               </button>
             ))}
           </div>
@@ -573,13 +614,22 @@ export default function ListingsBoard({
           )}
           {category === "jewellery" && (
             <div className="flex gap-2">
+              <dt className="font-medium text-neutral-300 min-w-[110px] shrink-0">Weight</dt>
+              <dd className="text-neutral-400">
+                Total weight in grams. Parsed from the lot title (&ldquo;1.6 g&rdquo;) or,
+                as a fallback, from Catawiki&apos;s spec rows (&ldquo;Weight&rdquo; / &ldquo;Total weight&rdquo; / &ldquo;Vikt&rdquo; / &ldquo;Gewicht&rdquo;).
+              </dd>
+            </div>
+          )}
+          {category === "jewellery" && (
+            <div className="flex gap-2">
               <dt className="font-medium text-cyan-400 min-w-[110px] shrink-0">Value</dt>
               <dd className="text-neutral-400">
-                Rough material / stone value from title parsing.
-                Diamonds: per-carat USD chart by color &amp; clarity.
+                Rough material / stone value, in your currency.
+                Diamonds: USD/ct chart by colour &amp; clarity.
                 Gold: SEK/g by karat (London Fix).
                 Silver: SEK/g by purity (London Fix).
-                Sanity check, not an appraisal — null when the title can&apos;t be parsed.
+                Sanity check, not an appraisal — &ldquo;—&rdquo; when the title / specs can&apos;t be parsed.
               </dd>
             </div>
           )}

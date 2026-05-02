@@ -18,7 +18,7 @@ import FavoriteButton from "./favorite-button";
 import Countdown from "./countdown";
 import { fAmount } from "@/lib/currency";
 import { vivinoSearchUrl, cellartrackerSearchUrl, systembolagetSearchUrl } from "@/lib/wine-links";
-import { estimateJewelleryValueEur } from "@/lib/jewellery-value";
+import { estimateJewelleryValueEur, extractWeightGrams } from "@/lib/jewellery-value";
 
 // Catawiki adds a 9% buyer's premium to every winning bid.
 const PREMIUM = 1.09;
@@ -74,7 +74,13 @@ export default function ListingRow({
         listing.title,
         listing.catawiki_category_id,
         listing.catawiki_subcategory_id,
+        listing.specifications,
       )
+    : null;
+  // Weight (in grams) for jewellery — pulled from the title or, as a
+  // fallback, from any "Weight"-like row in Catawiki's specifications.
+  const weightG = isJewellery
+    ? extractWeightGrams(listing.title, listing.specifications)
     : null;
   const estText =
     listing.estimated_low !== null && listing.estimated_high !== null
@@ -227,6 +233,19 @@ export default function ListingRow({
             >
               {fSek(listing.sb_price)}
             </a>
+          ) : (
+            <span className="text-neutral-700 text-xs">—</span>
+          )}
+        </td>
+      )}
+
+      {/* Weight — jewellery only */}
+      {isJewellery && (
+        <td className="py-2 pr-3 text-right align-top whitespace-nowrap">
+          {weightG != null ? (
+            <div className="text-xs text-neutral-300 tabular-nums" title="Weight parsed from title or specifications">
+              {weightG.toLocaleString("sv-SE")} g
+            </div>
           ) : (
             <span className="text-neutral-700 text-xs">—</span>
           )}
