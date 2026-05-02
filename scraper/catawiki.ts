@@ -235,10 +235,45 @@ interface LotDetailsData {
 /**
  * Extract a 2-letter country code (ISO 3166-1 alpha-2) for the seller.
  * Tries each documented field path; returns null if none populated.
+ *
+ * Debug: also dumps sellerInfo keys + first dump of the full pageProps
+ * the FIRST time it runs in a process, so we can see what shape Catawiki
+ * actually returns. (Cheap to keep, removes itself once the right path
+ * is hardcoded.)
  */
+let _sellerInfoDumped = false;
 function extractSellerCountry(
   sellerInfo: LotDetailsData["sellerInfo"],
+  fullPageProps?: unknown,
 ): string | null {
+  if (!_sellerInfoDumped) {
+    _sellerInfoDumped = true;
+    console.log("[seller-debug] sellerInfo:", JSON.stringify(sellerInfo, null, 2));
+    if (fullPageProps) {
+      // Walk the pageProps tree once and surface keys with country/location/ship
+      const hits: string[] = [];
+      const walk = (obj: unknown, path: string): void => {
+        if (obj && typeof obj === "object") {
+          if (Array.isArray(obj)) {
+            obj.slice(0, 3).forEach((v, i) => walk(v, `${path}[${i}]`));
+          } else {
+            for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+              const kl = k.toLowerCase();
+              if (kl.includes("country") || kl.includes("location") || kl.includes("ship") || kl.includes("seller")) {
+                const preview = typeof v === "object" ? "<obj>" : JSON.stringify(v).slice(0, 60);
+                hits.push(`${path}.${k} = ${preview}`);
+              }
+              walk(v, `${path}.${k}`);
+            }
+          }
+        }
+      };
+      walk(fullPageProps, "pp");
+      console.log("[seller-debug] country/location/ship/seller hits:");
+      for (const h of hits.slice(0, 30)) console.log("  " + h);
+    }
+  }
+
   if (!sellerInfo) return null;
   const candidates: Array<string | undefined> = [
     sellerInfo.countryCode,
@@ -250,8 +285,6 @@ function extractSellerCountry(
   ];
   for (const c of candidates) {
     if (typeof c === "string" && c.trim().length > 0) {
-      // Normalise to UPPER-CASE 2-letter code if it already looks like one;
-      // otherwise return the trimmed string as-is (e.g. "France").
       const trimmed = c.trim();
       return /^[A-Za-z]{2}$/.test(trimmed) ? trimmed.toUpperCase() : trimmed;
     }
@@ -326,7 +359,7 @@ function parseLotPageProps(
     lot_outcome,
     ends_at: new Date(bid.biddingEndTime).toISOString(),
     seller: ldd?.sellerInfo?.sellerName ?? null,
-    seller_country: extractSellerCountry(ldd?.sellerInfo ?? null),
+    seller_country: extractSellerCountry(ldd?.sellerInfo ?? null, pp),
     catawiki_category_id: catawikiCategoryId,
     catawiki_subcategory_id: catawikiSubcategoryId,
     shipping_cost_eur: null, // populated by scrapeLot after parsing
