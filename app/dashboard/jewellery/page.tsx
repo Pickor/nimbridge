@@ -9,6 +9,7 @@
  * gracefully.
  */
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllRows } from "@/lib/supabase/paginate";
 import { getIdentity, hasLevel, ROLE_LEVEL } from "@/lib/admin/roles";
 import { redirect } from "next/navigation";
 import type { ClassifiedListing, BucketData, HistoryListing } from "@/lib/types";
@@ -44,16 +45,33 @@ export default async function JewelleryDealsPage() {
   if (identity.role === "pending") redirect("/pending");
   if (!hasLevel(identity, ROLE_LEVEL.user)) redirect("/login?error=access");
 
+  // Paginate the active listings + the archive set past Supabase's
+  // PostgREST 1 000-row cap. Without this both queries silently truncate.
+  type ArchiveRow = Pick<HistoryListing,
+    "title" | "catawiki_category_id" | "catawiki_subcategory_id" | "weight_g" | "final_price" | "ends_at"
+  >;
+  const listingsPromise = fetchAllRows<ClassifiedListing>((from, to) =>
+    supabase
+      .from("v_classified_listings")
+      .select("*")
+      .eq("category", VERTICAL)
+      .order("ends_at", { ascending: true })
+      .range(from, to),
+  );
+  const archivesPromise = fetchAllRows<ArchiveRow>((from, to) =>
+    supabase
+      .from("auction_results")
+      .select("title, catawiki_category_id, catawiki_subcategory_id, weight_g, final_price, ends_at")
+      .eq("category", VERTICAL)
+      .order("ends_at", { ascending: false })
+      .range(from, to),
+  );
+
   const [
-    listingsRes, favoritesRes, activeCountRes, lastRunRes, profileRes, settingsRes,
-    archivesRes,
+    rawRows, favoritesRes, activeCountRes, lastRunRes, profileRes, settingsRes,
+    archives,
   ] = await Promise.all([
-      supabase
-        .from("v_classified_listings")
-        .select("*")
-        .eq("category", VERTICAL)
-        .order("ends_at", { ascending: true })
-        .limit(5000),
+      listingsPromise,
       supabase.from("favorites").select("listing_id").eq("user_id", user.id),
       supabase
         .from("v_classified_listings")
@@ -75,23 +93,12 @@ export default async function JewelleryDealsPage() {
         .select("currency, country_code")
         .eq("user_id", user.id)
         .maybeSingle(),
-      // Recent jewellery closes — small set (~250 rows), used to override the
-      // view's title-based last_auction_price with a grade+weight match.
-      supabase
-        .from("auction_results")
-        .select("title, catawiki_category_id, catawiki_subcategory_id, weight_g, final_price, ends_at")
-        .eq("category", VERTICAL)
-        .order("ends_at", { ascending: false })
-        .limit(2000),
+      archivesPromise,
     ]);
 
   const favoriteIds = new Set(
     (favoritesRes.data ?? []).map((f) => f.listing_id as string)
   );
-  const rawRows = (listingsRes.data ?? []) as ClassifiedListing[];
-  const archives = (archivesRes.data ?? []) as Pick<HistoryListing,
-    "title" | "catawiki_category_id" | "catawiki_subcategory_id" | "weight_g" | "final_price" | "ends_at"
-  >[];
   // Override last_auction_price using grade+weight match. Listings with
   // a grade we can't parse keep the view's title-match value.
   const rows = enrichJewelleryLastPrices(rawRows, archives as HistoryListing[]);

@@ -12,6 +12,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { fetchAllRows } from "@/lib/supabase/paginate";
 import type { ClassifiedListing, BucketData, HistoryListing } from "@/lib/types";
 import { enrichJewelleryLastPrices } from "@/lib/jewellery-match";
 
@@ -42,27 +43,32 @@ const ALLOWED_CATEGORIES = new Set([
 ]);
 
 async function fetchListings(category: string): Promise<ClassifiedListing[]> {
-  const { data } = await supabaseAdmin
-    .from("v_classified_listings")
-    .select("*")
-    .eq("category", category)
-    .order("ends_at", { ascending: true })
-    .limit(5000);
-  const rows = (data ?? []) as ClassifiedListing[];
+  // Paginate past PostgREST's db-max-rows (1 000). `.limit(5000)` silently
+  // capped at 1 000 — `fetchAllRows` loops `.range()` until exhausted.
+  const rows = await fetchAllRows<ClassifiedListing>((from, to) =>
+    supabaseAdmin
+      .from("v_classified_listings")
+      .select("*")
+      .eq("category", category)
+      .order("ends_at", { ascending: true })
+      .range(from, to),
+  );
 
   // Jewellery dashboards override the view's title-match last_auction_price
   // with a grade+weight match. The archive set is small (~250 rows) so
   // pulling it on every poll is cheap.
   if (category === "jewellery") {
-    const { data: archData } = await supabaseAdmin
-      .from("auction_results")
-      .select("title, catawiki_category_id, catawiki_subcategory_id, weight_g, final_price, ends_at")
-      .eq("category", "jewellery")
-      .order("ends_at", { ascending: false })
-      .limit(2000);
-    const archives = (archData ?? []) as Pick<HistoryListing,
+    type ArchiveRow = Pick<HistoryListing,
       "title" | "catawiki_category_id" | "catawiki_subcategory_id" | "weight_g" | "final_price" | "ends_at"
-    >[];
+    >;
+    const archives = await fetchAllRows<ArchiveRow>((from, to) =>
+      supabaseAdmin
+        .from("auction_results")
+        .select("title, catawiki_category_id, catawiki_subcategory_id, weight_g, final_price, ends_at")
+        .eq("category", "jewellery")
+        .order("ends_at", { ascending: false })
+        .range(from, to),
+    );
     return enrichJewelleryLastPrices(rows, archives as HistoryListing[]);
   }
   return rows;

@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllRows } from "@/lib/supabase/paginate";
 import { getIdentity, hasLevel, ROLE_LEVEL } from "@/lib/admin/roles";
 import { redirect } from "next/navigation";
 import type { ClassifiedListing, BucketData } from "@/lib/types";
@@ -19,14 +20,19 @@ export default async function DashboardPage() {
   if (identity.role === "pending") redirect("/pending");
   if (!hasLevel(identity, ROLE_LEVEL.user)) redirect("/login?error=access");
 
-  const [listingsRes, favoritesRes, activeCountRes, lastRunRes, profileRes, settingsRes] =
+  // Paginate past Supabase's PostgREST 1 000-row cap (db-max-rows)
+  const listingsPromise = fetchAllRows<ClassifiedListing>((from, to) =>
+    supabase
+      .from("v_classified_listings")
+      .select("*")
+      .eq("category", "wine-whisky-spirits")
+      .order("ends_at", { ascending: true })
+      .range(from, to),
+  );
+
+  const [rows, favoritesRes, activeCountRes, lastRunRes, profileRes, settingsRes] =
     await Promise.all([
-      supabase
-        .from("v_classified_listings")
-        .select("*")
-        .eq("category", "wine-whisky-spirits")
-        .order("ends_at", { ascending: true })
-        .limit(5000),
+      listingsPromise,
       supabase.from("favorites").select("listing_id").eq("user_id", user.id),
       supabase
         .from("v_classified_listings")
@@ -53,7 +59,6 @@ export default async function DashboardPage() {
   const favoriteIds = new Set(
     (favoritesRes.data ?? []).map((f) => f.listing_id as string)
   );
-  const rows = (listingsRes.data ?? []) as ClassifiedListing[];
 
   const buckets: BucketData = {
     ending_soon: rows.filter((l) => l.ending_soon_no_bids),

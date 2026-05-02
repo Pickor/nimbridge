@@ -37,6 +37,11 @@ const accentClass = {
 const ZOOM_MIN = 0.2;
 const ZOOM_MAX = 3;
 
+// Page size for per-bucket "Load more" pagination. With 1 000+ lots in a
+// single bucket, rendering them all at once balloons DOM size and slows
+// scrolling — chunk into pages of 100 and let the user expand on demand.
+const PAGE_SIZE = 100;
+
 /**
  * Two-finger pinch on a touch device scales just the table this hook is
  * attached to. Mouse / trackpad users are unaffected — touchstart never fires.
@@ -118,6 +123,17 @@ export default function BucketSection({
   const { containerRef, zoom } = useTablePinchZoom();
   const isWine = vertical === "wine-whisky-spirits";
   const isJewellery = vertical === "jewellery";
+
+  // Per-bucket pagination — reset to page 1 whenever the listings array
+  // identity changes (filters, sort, refresh). Tier with ≤ PAGE_SIZE
+  // lots renders all rows and hides the Load more button entirely.
+  const [page, setPage] = useState(1);
+  useEffect(() => { setPage(1); }, [listings]);
+  const visibleCount = Math.min(page * PAGE_SIZE, listings.length);
+  const visible = listings.slice(0, visibleCount);
+  const hasMore = visibleCount < listings.length;
+  const remaining = listings.length - visibleCount;
+
   return (
     <details open className="group">
       <summary
@@ -184,7 +200,7 @@ export default function BucketSection({
                 </tr>
               </thead>
               <tbody>
-                {listings.map((listing) => (
+                {visible.map((listing) => (
                   <ListingRow
                     key={listing.id}
                     listing={listing}
@@ -198,6 +214,36 @@ export default function BucketSection({
               </tbody>
             </table>
           </div>
+
+          {/* Per-bucket pagination — show a Load more button when more
+              rows are available, plus a "Show all" shortcut and an
+              "X of Y" counter. Tiny tiers (≤ PAGE_SIZE) render directly
+              and skip this footer entirely. */}
+          {(hasMore || page > 1) && (
+            <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-t border-neutral-800 bg-neutral-900/40">
+              <span className="text-[11px] text-neutral-500 tabular-nums">
+                Showing {visibleCount.toLocaleString("sv-SE")} of {listings.length.toLocaleString("sv-SE")}
+              </span>
+              {hasMore && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setPage((p) => p + 1)}
+                    className="px-3 py-1 rounded-full bg-neutral-800 border border-neutral-700 text-xs text-neutral-300 hover:bg-neutral-700 hover:text-white transition-colors"
+                  >
+                    Load more ({remaining.toLocaleString("sv-SE")} remaining)
+                  </button>
+                  <button
+                    onClick={() => setPage(Math.ceil(listings.length / PAGE_SIZE))}
+                    className="px-3 py-1 rounded-full bg-neutral-800/60 border border-neutral-800 text-xs text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition-colors"
+                    title="Render every row in this tier"
+                  >
+                    Show all
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="px-3 py-1.5 text-[10px] text-neutral-600 border-t border-neutral-800">
             +9% buyer&apos;s premium{showShipping ? " · Ship SE = shipping to Sweden · Total incl. shipping" : ""}
           </div>
