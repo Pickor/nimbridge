@@ -3,10 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import type { BucketData, ClassifiedListing } from "@/lib/types";
 import BucketSection from "@/components/bucket-section";
-import { parseGoldColor, type GoldColor } from "@/lib/jewellery-value";
+import { parseGoldColor, type GoldColor, parseDiamondGrade } from "@/lib/jewellery-value";
 import { isEuCountry } from "@/lib/eu-countries";
 
 type ShipsFrom = "eu" | "non_eu" | null;
+
+// Catawiki diamond clarity grades. We filter on these because they're the
+// most common axis users ask "show me only Xs" by.
+const DIAMOND_CLARITIES = ["IF", "VVS1", "VVS2", "VS1", "VS2", "SI1", "SI2", "I1"] as const;
+type DiamondClarity = (typeof DIAMOND_CLARITIES)[number];
 
 // ── Category / subcategory config ─────────────────────────────────────────
 
@@ -174,6 +179,7 @@ function applyFilters(
   requireNoReserve: boolean,
   goldColor: GoldColor | null,
   shipsFrom: ShipsFrom,
+  activeClarities: Set<DiamondClarity>,
 ): BucketData {
   const q = search.trim().toLowerCase();
   const filterList = (list: ClassifiedListing[]) =>
@@ -189,6 +195,14 @@ function applyFilters(
       // from both EU and Outside-EU views (we genuinely don't know).
       if (shipsFrom === "eu"     && !isEuCountry(l.seller_country)) return false;
       if (shipsFrom === "non_eu" && (l.seller_country == null || isEuCountry(l.seller_country))) return false;
+      // Diamond clarity filter: applies only to diamond lots (catawiki
+      // category 715). When any clarities are selected, non-diamonds and
+      // diamonds with non-matching clarity are excluded.
+      if (activeClarities.size > 0) {
+        if (l.catawiki_category_id !== 715) return false;
+        const grade = parseDiamondGrade(l.title);
+        if (!grade || !activeClarities.has(grade.clarity as DiamondClarity)) return false;
+      }
 
       if (activePricePresets.size > 0) {
         const bid = l.current_bid ?? 0;
@@ -311,6 +325,7 @@ export default function ListingsBoard({
   const [requireNoReserve, setRequireNoReserve] = useState(false);
   const [goldColor, setGoldColor] = useState<GoldColor | null>(null);
   const [shipsFrom, setShipsFrom] = useState<ShipsFrom>(null);
+  const [activeClarities, setActiveClarities] = useState<Set<DiamondClarity>>(new Set());
   const [search, setSearch]               = useState("");
 
   const [showTopBtn, setShowTopBtn] = useState(false);
@@ -368,7 +383,7 @@ export default function ListingsBoard({
     buckets, activeCategoryId, activeSubcategoryId,
     activePricePresets, activeBuckets, activeVintagePresets,
     search, requireLastPrice, requireNoReserve, effectiveGoldColor,
-    shipsFrom,
+    shipsFrom, activeClarities,
   );
 
   const sorted: BucketData = {
@@ -539,6 +554,36 @@ export default function ListingsBoard({
             })}
           </div>
 
+          {/* Grades — diamond clarity, jewellery dashboard only. Multi-select. */}
+          {category === "jewellery" && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-neutral-500 shrink-0 w-16">Grades</span>
+              <Pill
+                active={activeClarities.size === 0}
+                onClick={() => setActiveClarities(new Set())}
+                title="Show all clarity grades"
+              >
+                Any
+              </Pill>
+              {DIAMOND_CLARITIES.map((g) => (
+                <Pill
+                  key={g}
+                  active={activeClarities.has(g)}
+                  onClick={() =>
+                    setActiveClarities((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(g)) next.delete(g); else next.add(g);
+                      return next;
+                    })
+                  }
+                  title={`Diamond clarity ${g}`}
+                >
+                  {g}
+                </Pill>
+              ))}
+            </div>
+          )}
+
           {/* Ships from — exclusive, EU vs Outside-EU vs Any. */}
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-neutral-500 shrink-0 w-16">Ships from</span>
@@ -645,6 +690,18 @@ export default function ListingsBoard({
           )}
           {category === "jewellery" && (
             <div className="flex gap-2">
+              <dt className="font-medium text-neutral-300 min-w-[110px] shrink-0">Grade</dt>
+              <dd className="text-neutral-400">
+                Diamond grade parsed from the title:
+                shape (Round / Heart / …) ·{" "}
+                <span className="text-amber-400">colour D-N</span> ·{" "}
+                <span className="text-cyan-300">clarity IF/VVS/VS/SI/I</span>.
+                Empty for non-diamond lots.
+              </dd>
+            </div>
+          )}
+          {category === "jewellery" && (
+            <div className="flex gap-2">
               <dt className="font-medium text-neutral-300 min-w-[110px] shrink-0">Weight</dt>
               <dd className="text-neutral-400">
                 Total weight in grams. Parsed from the lot title (&ldquo;1.6 g&rdquo;) or,
@@ -657,9 +714,9 @@ export default function ListingsBoard({
               <dt className="font-medium text-cyan-400 min-w-[110px] shrink-0">Value</dt>
               <dd className="text-neutral-400">
                 Rough material / stone value, in your currency.
-                Diamonds: USD/ct chart by colour &amp; clarity.
-                Gold: SEK/g by karat (London Fix).
-                Silver: SEK/g by purity (London Fix).
+                Diamonds: USD/ct Pricescope-aligned table × shape factor
+                (Round 1.0 · Heart 0.60 · Pear 0.65 · …) × carat-size factor.
+                Gold &amp; Silver: SEK/g &ldquo;Pengar direkt&rdquo; from Kaplans, refreshed daily.
                 Sanity check, not an appraisal — &ldquo;—&rdquo; when the title / specs can&apos;t be parsed.
               </dd>
             </div>

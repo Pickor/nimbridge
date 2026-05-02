@@ -169,6 +169,9 @@ export default function BucketSection({
                     <th className="py-2 pr-3 text-xs font-medium text-neutral-400 text-right whitespace-nowrap">SB pris</th>
                   )}
                   {isJewellery && (
+                    <th className="py-2 pr-3 text-xs font-medium text-neutral-400 text-right whitespace-nowrap">Grade</th>
+                  )}
+                  {isJewellery && (
                     <th className="py-2 pr-3 text-xs font-medium text-neutral-400 text-right whitespace-nowrap">Weight</th>
                   )}
                   {isJewellery && (

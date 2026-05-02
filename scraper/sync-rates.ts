@@ -56,10 +56,12 @@ function parseKaplans(html: string): { gold: Record<string, number>; silver: Rec
   const silver: Record<number, number> = {};
 
   // Gold table is index 0, silver is index 1 (verified 2026-05-02).
-  const goldText = stripTags(tables[0]);
+  const goldText = stripTags(tables[0] as string);
   for (const m of goldText.matchAll(/Guld(?:tacka)?\s*(\d{1,2}(?:[.,]\d)?)\s*K[^\d]*?(\d[\d ]*[.,]?\d*)/g)) {
-    const karat = m[1].replace(",", ".");
-    gold[karat] = parseSv(m[2]);
+    const karatStr = m[1] as string;
+    const priceStr = m[2] as string;
+    const karat = karatStr.replace(",", ".");
+    gold[karat] = parseSv(priceStr);
   }
   // Mirror 21.6K to 22K and 21K so titles using either match.
   if (gold["21.6"]) {
@@ -67,9 +69,9 @@ function parseKaplans(html: string): { gold: Record<string, number>; silver: Rec
     gold["22"] = gold["21.6"];
   }
 
-  const silverText = stripTags(tables[1]);
+  const silverText = stripTags(tables[1] as string);
   for (const m of silverText.matchAll(/Silver(?:mynt)?\s*(\d{3})[^\d]*?(\d+[.,]?\d*)/g)) {
-    silver[parseInt(m[1], 10)] = parseSv(m[2]);
+    silver[parseInt(m[1] as string, 10)] = parseSv(m[2] as string);
   }
 
   if (Object.keys(gold).length < 4) throw new Error("Kaplans: parsed too few gold rows");

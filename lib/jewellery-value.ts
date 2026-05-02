@@ -189,25 +189,27 @@ function valueSilverEur(
   return toEur(sekPerG * grams, "SEK");
 }
 
-// ── Diamonds (USD / ct, Pricescope-style; round-brilliant midpoints) ──────
+// ── Diamonds ──────────────────────────────────────────────────────────────
 //
-// Per-carat USD prices for round brilliants at the 0.9-1.0 ct tier. Smaller
-// or larger stones scale via DIAMOND_CARAT_FACTOR. Values are MIDPOINTS of
-// the typical Pricescope range — undervalued findings should still beat
-// these numbers.
+// Per-carat USD prices for ROUND BRILLIANTS at the 0.9-1.0 ct tier
+// (~Pricescope mid-range), then scaled by carat size and shape. The
+// previous values were calibrated to retail asking prices and were
+// roughly 2-3× too high; this table is calibrated against a user-supplied
+// Pricescope data point: 1.01 ct G VVS2 Heart should land near $3,346/ct
+// total, which back-solves to ~$5,500/ct round + 0.60 heart factor.
 const DIAMOND_USD_PER_CT_AT_1CT: Record<string, Record<string, number>> = {
-  D: { IF: 28000, VVS1: 25000, VVS2: 22000, VS1: 18000, VS2: 15000, SI1: 12000, SI2:  9000, I1: 5000 },
-  E: { IF: 24000, VVS1: 22000, VVS2: 20000, VS1: 16000, VS2: 13000, SI1: 11000, SI2:  8500, I1: 4500 },
-  F: { IF: 22000, VVS1: 20000, VVS2: 18000, VS1: 14500, VS2: 12000, SI1: 10000, SI2:  8000, I1: 4200 },
-  G: { IF: 18000, VVS1: 17000, VVS2: 15000, VS1: 12500, VS2: 10500, SI1:  9000, SI2:  7000, I1: 3800 },
-  H: { IF: 15000, VVS1: 14000, VVS2: 12500, VS1: 10500, VS2:  9000, SI1:  7500, SI2:  6000, I1: 3500 },
-  I: { IF: 12500, VVS1: 11500, VVS2: 10500, VS1:  9000, VS2:  7800, SI1:  6500, SI2:  5200, I1: 3000 },
-  J: { IF: 10500, VVS1: 10000, VVS2:  9000, VS1:  8000, VS2:  7000, SI1:  5800, SI2:  4600, I1: 2700 },
-  K: { IF:  8500, VVS1:  8000, VVS2:  7500, VS1:  6800, VS2:  6000, SI1:  5000, SI2:  4000, I1: 2300 },
+  D: { IF: 13200, VVS1: 11000, VVS2: 8800, VS1: 7500, VS2: 6200, SI1: 4800, SI2: 4000, I1: 2600 },
+  E: { IF: 11500, VVS1:  9700, VVS2: 7700, VS1: 6500, VS2: 5400, SI1: 4200, SI2: 3500, I1: 2300 },
+  F: { IF:  9900, VVS1:  8300, VVS2: 6600, VS1: 5600, VS2: 4600, SI1: 3600, SI2: 3000, I1: 2000 },
+  G: { IF:  8200, VVS1:  6900, VVS2: 5500, VS1: 4700, VS2: 3850, SI1: 3000, SI2: 2500, I1: 1650 },
+  H: { IF:  7000, VVS1:  5900, VVS2: 4700, VS1: 4000, VS2: 3300, SI1: 2600, SI2: 2100, I1: 1400 },
+  I: { IF:  5800, VVS1:  4800, VVS2: 3850, VS1: 3300, VS2: 2700, SI1: 2100, SI2: 1700, I1: 1150 },
+  J: { IF:  4500, VVS1:  3800, VVS2: 3000, VS1: 2600, VS2: 2100, SI1: 1700, SI2: 1400, I1:  900 },
+  K: { IF:  3700, VVS1:  3100, VVS2: 2500, VS1: 2100, VS2: 1700, SI1: 1400, SI2: 1100, I1:  750 },
 };
 
-// Multiplier vs the 1ct base to model that small diamonds have lower
-// per-carat prices and large diamonds have higher.
+// Carat-size factor vs the 1ct base. Small stones have lower per-carat
+// prices, large stones higher.
 function diamondCaratFactor(ct: number): number {
   if (ct < 0.30) return 0.30;
   if (ct < 0.50) return 0.45;
@@ -219,32 +221,84 @@ function diamondCaratFactor(ct: number): number {
   return 1.80;
 }
 
-function parseDiamond(title: string): { carat: number; color: string; clarity: string } | null {
+// Shape factor vs round brilliant. Pricescope-style ratios — fancy shapes
+// trade well below round across all tiers.
+const DIAMOND_SHAPE_FACTOR: Record<DiamondShape, number> = {
+  round:    1.00,
+  princess: 0.80,
+  cushion:  0.72,
+  emerald:  0.68,
+  asscher:  0.66,
+  oval:     0.70,
+  pear:     0.65,
+  marquise: 0.62,
+  radiant:  0.72,
+  heart:    0.60,
+  other:    0.65,
+};
+
+export type DiamondShape =
+  | "round" | "princess" | "cushion" | "emerald" | "asscher"
+  | "oval" | "pear" | "marquise" | "radiant" | "heart" | "other";
+
+function parseDiamondShape(title: string): DiamondShape {
+  const t = title.toLowerCase();
+  if (/\b(round|brilliant)\b/.test(t))                  return "round";
+  if (/\bprincess\b/.test(t))                           return "princess";
+  if (/\b(cushion|old\s*mine)\b/.test(t))               return "cushion";
+  if (/\basscher\b/.test(t))                            return "asscher";
+  if (/\bemerald\b/.test(t) && !/\bemerald.*shape\b/.test(t)) {
+    // "Emerald" is also a gemstone — only treat as shape when it's a known
+    // diamond shape word in a diamond context. Catawiki uses "Emerald" as
+    // shape for diamond cuts, so just match the word here.
+    return "emerald";
+  }
+  if (/\boval\b/.test(t))                               return "oval";
+  if (/\b(pear|teardrop)\b/.test(t))                    return "pear";
+  if (/\bmarquise\b/.test(t))                           return "marquise";
+  if (/\bradiant\b/.test(t))                            return "radiant";
+  if (/\bheart\b/.test(t))                              return "heart";
+  return "other";
+}
+
+export interface DiamondGrade {
+  carat: number;
+  shape: DiamondShape;
+  color: string;     // D..N
+  clarity: string;   // IF / VVS1 / VVS2 / VS1 / VS2 / SI1 / SI2 / I1 / I2 / I3
+}
+
+export function parseDiamondGrade(title: string): DiamondGrade | null {
   const caratMatch = title.match(/(\d+(?:[.,]\d+)?)\s*ct\b/i);
   if (!caratMatch) return null;
-  const carat = parseFloat(caratMatch[1].replace(",", "."));
+  const carat = parseFloat(caratMatch[1]!.replace(",", "."));
 
-  // Color is a standalone capital D-N letter, usually surrounded by hyphens
-  // like "- J -" or "- G -".
+  // Colour: standalone capital D-N letter, usually wrapped in " - X -"
   const colorMatch = title.match(/\s-\s([D-N])\s-\s/);
   if (!colorMatch) return null;
 
   const clarityMatch = title.match(/\b(IF|FL|VVS1|VVS2|VS1|VS2|SI1|SI2|I1|I2|I3)\b/);
   if (!clarityMatch) return null;
 
-  return { carat, color: colorMatch[1], clarity: clarityMatch[1] };
+  return {
+    carat,
+    shape: parseDiamondShape(title),
+    color: colorMatch[1]!,
+    clarity: clarityMatch[1]!,
+  };
 }
 
 function valueDiamondEur(title: string): number | null {
-  const m = parseDiamond(title);
-  if (!m) return null;
-  const colorRow = DIAMOND_USD_PER_CT_AT_1CT[m.color];
+  const g = parseDiamondGrade(title);
+  if (!g) return null;
+  const colorRow = DIAMOND_USD_PER_CT_AT_1CT[g.color];
   if (!colorRow) return null;
-  // Treat FL same as IF (rare, similar price tier)
-  const cl = m.clarity === "FL" ? "IF" : m.clarity;
+  // Treat FL same as IF (similar tier; rare in titles).
+  const cl = g.clarity === "FL" ? "IF" : g.clarity;
   const usdPerCt = colorRow[cl];
   if (!usdPerCt) return null;
-  const totalUsd = m.carat * usdPerCt * diamondCaratFactor(m.carat);
+  const totalUsd =
+    g.carat * usdPerCt * diamondCaratFactor(g.carat) * DIAMOND_SHAPE_FACTOR[g.shape];
   return toEur(totalUsd, "USD");
 }
 

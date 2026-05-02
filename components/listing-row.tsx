@@ -18,7 +18,7 @@ import FavoriteButton from "./favorite-button";
 import Countdown from "./countdown";
 import { fAmount } from "@/lib/currency";
 import { vivinoSearchUrl, cellartrackerSearchUrl, systembolagetSearchUrl } from "@/lib/wine-links";
-import { estimateJewelleryValueEur, extractWeightGrams } from "@/lib/jewellery-value";
+import { estimateJewelleryValueEur, extractWeightGrams, parseDiamondGrade } from "@/lib/jewellery-value";
 
 // Catawiki adds a 9% buyer's premium to every winning bid.
 const PREMIUM = 1.09;
@@ -82,6 +82,11 @@ export default function ListingRow({
   const weightG = isJewellery
     ? extractWeightGrams(listing.title, listing.specifications)
     : null;
+  // Diamond grade (shape + colour + clarity) parsed from the title.
+  const diamondGrade =
+    isJewellery && listing.catawiki_category_id === 715
+      ? parseDiamondGrade(listing.title)
+      : null;
   const estText =
     listing.estimated_low !== null && listing.estimated_high !== null
       ? `${fEur(listing.estimated_low)}–${fEur(listing.estimated_high)}`
@@ -233,6 +238,23 @@ export default function ListingRow({
             >
               {fSek(listing.sb_price)}
             </a>
+          ) : (
+            <span className="text-neutral-700 text-xs">—</span>
+          )}
+        </td>
+      )}
+
+      {/* Grade — jewellery only (diamonds; '-' for gold/silver). */}
+      {isJewellery && (
+        <td className="py-2 pr-3 text-right align-top whitespace-nowrap">
+          {diamondGrade ? (
+            <div className="text-xs text-neutral-300 tabular-nums" title="Shape · Colour · Clarity">
+              <span className="capitalize">{diamondGrade.shape}</span>
+              {" · "}
+              <span className="text-amber-400 font-medium">{diamondGrade.color}</span>
+              {" · "}
+              <span className="text-cyan-300">{diamondGrade.clarity}</span>
+            </div>
           ) : (
             <span className="text-neutral-700 text-xs">—</span>
           )}
