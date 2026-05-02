@@ -147,9 +147,16 @@ const BUCKET_FILTERS = [
 
 // ── Filter + sort logic ────────────────────────────────────────────────────
 
-/** Catawiki prefixes lots without a reserve with "No reserve price - …". */
+/**
+ * Detect Catawiki's "no reserve" tag in a lot title.
+ * - Jewellery uses a prefix:   "No reserve price - Necklace…"
+ * - Wine uses a mid-string tag: "Rémy Martin - No Reserve Price - Louis XIII…"
+ *
+ * Word-boundaried "no reserve" matches both shapes without false-positiving
+ * on phrases like "Founder's Reserve" / "Gold Reserve" (no preceding "no").
+ */
 function isNoReserve(title: string): boolean {
-  return /^\s*no\s*reserve(\s*price)?\s*[-–]/i.test(title);
+  return /\bno\s*reserve(\s*price)?\b/i.test(title);
 }
 
 function applyFilters(
