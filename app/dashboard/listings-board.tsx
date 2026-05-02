@@ -415,6 +415,15 @@ export default function ListingsBoard({
     rest:        sortListings(filtered.rest,         sortMode),
   };
 
+  // "Visar X utav Y auktioner" counter shown above the bucket sections.
+  // Total = the SSE snapshot before any client-side filter; visible = post.
+  const sumBuckets = (b: BucketData) =>
+    b.ending_soon.length + b.low_price.length + b.good_price.length +
+    b.ok_price.length    + b.overpriced.length + b.rest.length;
+  const totalCount    = sumBuckets(buckets);
+  const visibleCount  = sumBuckets(sorted);
+  const isFiltered    = visibleCount !== totalCount;
+
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 space-y-8">
       {!connected && (
@@ -552,29 +561,32 @@ export default function ListingsBoard({
             <Pill active={sortMode === "vs_est"}     onClick={() => setSortMode("vs_est")} title="Most below estimate first">vs Est %</Pill>
           </div>
 
-          {/* Vintage — multi-select, All clears others */}
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-neutral-500 shrink-0 w-16">Vintage</span>
-            <Pill active={activeVintagePresets.size === 0} onClick={() => setActiveVintagePresets(new Set())}>
-              Any year
-            </Pill>
-            {VINTAGE_PRESETS.slice(1).map((v, i) => {
-              const idx = i + 1;
-              return (
-                <Pill
-                  key={idx}
-                  active={activeVintagePresets.has(idx)}
-                  onClick={() => setActiveVintagePresets((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(idx)) next.delete(idx); else next.add(idx);
-                    return next;
-                  })}
-                >
-                  {v.label}
-                </Pill>
-              );
-            })}
-          </div>
+          {/* Vintage — wine-only (no concept of vintage year for jewellery /
+              watches / apple). Multi-select; "Any year" clears. */}
+          {category === "wine-whisky-spirits" && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-neutral-500 shrink-0 w-16">Vintage</span>
+              <Pill active={activeVintagePresets.size === 0} onClick={() => setActiveVintagePresets(new Set())}>
+                Any year
+              </Pill>
+              {VINTAGE_PRESETS.slice(1).map((v, i) => {
+                const idx = i + 1;
+                return (
+                  <Pill
+                    key={idx}
+                    active={activeVintagePresets.has(idx)}
+                    onClick={() => setActiveVintagePresets((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(idx)) next.delete(idx); else next.add(idx);
+                      return next;
+                    })}
+                  >
+                    {v.label}
+                  </Pill>
+                );
+              })}
+            </div>
+          )}
 
           {/* Grades — context-aware multi-select.
                 Diamond pill (cat 715)        -> Clarity (IF…I1)
@@ -794,6 +806,35 @@ export default function ListingsBoard({
           ↑ Back to Top
         </button>
       )}
+
+      {/* "Visar X utav Y auktioner" — live count of filter results.
+          Highlighted when any filter is narrowing the set. */}
+      <div
+        aria-live="polite"
+        className={[
+          "rounded-xl border px-4 py-2.5 text-sm flex items-center justify-between gap-3",
+          isFiltered
+            ? "border-blue-500/30 bg-blue-500/5 text-blue-200"
+            : "border-neutral-800 bg-neutral-900/50 text-neutral-400",
+        ].join(" ")}
+      >
+        <div>
+          Visar{" "}
+          <span className="font-semibold tabular-nums text-white">
+            {visibleCount.toLocaleString("sv-SE")}
+          </span>{" "}
+          utav{" "}
+          <span className="font-semibold tabular-nums text-white">
+            {totalCount.toLocaleString("sv-SE")}
+          </span>{" "}
+          auktioner
+        </div>
+        {isFiltered && (
+          <span className="text-xs text-neutral-500 hidden sm:inline">
+            {Math.round((visibleCount / Math.max(totalCount, 1)) * 100)}% av totalen
+          </span>
+        )}
+      </div>
 
       {/* ── Bucket sections ── */}
       {(activeBuckets.size === 0 || activeBuckets.has("ending_soon")) && (
