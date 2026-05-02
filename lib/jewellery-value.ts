@@ -196,22 +196,43 @@ function valueSilverEur(
 
 // ── Diamonds ──────────────────────────────────────────────────────────────
 //
-// Per-carat USD prices for ROUND BRILLIANTS at the 0.9-1.0 ct tier
-// (~Pricescope mid-range), then scaled by carat size and shape. The
-// previous values were calibrated to retail asking prices and were
-// roughly 2-3× too high; this table is calibrated against a user-supplied
-// Pricescope data point: 1.01 ct G VVS2 Heart should land near $3,346/ct
-// total, which back-solves to ~$5,500/ct round + 0.60 heart factor.
-const DIAMOND_USD_PER_CT_AT_1CT: Record<string, Record<string, number>> = {
-  D: { IF: 13200, VVS1: 11000, VVS2: 8800, VS1: 7500, VS2: 6200, SI1: 4800, SI2: 4000, I1: 2600 },
-  E: { IF: 11500, VVS1:  9700, VVS2: 7700, VS1: 6500, VS2: 5400, SI1: 4200, SI2: 3500, I1: 2300 },
-  F: { IF:  9900, VVS1:  8300, VVS2: 6600, VS1: 5600, VS2: 4600, SI1: 3600, SI2: 3000, I1: 2000 },
-  G: { IF:  8200, VVS1:  6900, VVS2: 5500, VS1: 4700, VS2: 3850, SI1: 3000, SI2: 2500, I1: 1650 },
-  H: { IF:  7000, VVS1:  5900, VVS2: 4700, VS1: 4000, VS2: 3300, SI1: 2600, SI2: 2100, I1: 1400 },
-  I: { IF:  5800, VVS1:  4800, VVS2: 3850, VS1: 3300, VS2: 2700, SI1: 2100, SI2: 1700, I1: 1150 },
-  J: { IF:  4500, VVS1:  3800, VVS2: 3000, VS1: 2600, VS2: 2100, SI1: 1700, SI2: 1400, I1:  900 },
-  K: { IF:  3700, VVS1:  3100, VVS2: 2500, VS1: 2100, VS2: 1700, SI1: 1400, SI2: 1100, I1:  750 },
+// Pricing model: anchor × color factor × clarity factor × carat × shape × carat-size band.
+//
+//   anchor: USD per carat for a 1ct G VVS2 round brilliant
+//   color factor:   D → 1.60   K → 0.45   N → 0.24   fancy → 0.50
+//   clarity factor: IF → 1.50  VVS2 → 1.00  SI2 → 0.45  I3 → 0.10
+//
+// Calibrated against the user-supplied Pricescope data point:
+// 1.01 ct G VVS2 Heart  →  ≈$3,346 total per Pricescope
+// matches anchor 5500 × shape factor 0.60 (heart) ≈ $3,333. ✓
+//
+// "fancy" handles all "Fancy …" colors (yellow, brown, pink, …) with one
+// mid-range factor. Coloured diamonds vary wildly so this is a sanity
+// number, not an appraisal.
+
+const DIAMOND_ANCHOR_USD_PER_CT = 5500;
+
+const DIAMOND_COLOR_FACTOR: Record<string, number> = {
+  D: 1.60, E: 1.40, F: 1.20, G: 1.00, H: 0.85, I: 0.70, J: 0.55, K: 0.45,
+  L: 0.36, M: 0.30, N: 0.24, O: 0.20, P: 0.18, Q: 0.16, R: 0.14, S: 0.13,
+  T: 0.12, U: 0.11, V: 0.10, W: 0.10, X: 0.10, Y: 0.10, Z: 0.10,
+  fancy: 0.50,
 };
+
+const DIAMOND_CLARITY_FACTOR: Record<string, number> = {
+  IF: 1.50, FL: 1.50,
+  VVS1: 1.25, VVS2: 1.00,
+  VS1: 0.85, VS2: 0.70,
+  SI1: 0.55, SI2: 0.45,
+  I1: 0.30, I2: 0.20, I3: 0.10,
+};
+
+function diamondUsdPerCtAt1Ct(color: string, clarity: string): number | null {
+  const c = DIAMOND_COLOR_FACTOR[color];
+  const cl = DIAMOND_CLARITY_FACTOR[clarity];
+  if (c == null || cl == null) return null;
+  return DIAMOND_ANCHOR_USD_PER_CT * c * cl;
+}
 
 // Carat-size factor vs the 1ct base. Small stones have lower per-carat
 // prices, large stones higher.
@@ -273,14 +294,38 @@ export interface DiamondGrade {
   clarity: string;   // IF / VVS1 / VVS2 / VS1 / VS2 / SI1 / SI2 / I1 / I2 / I3
 }
 
+/** Pick out the colour grade from a Catawiki diamond title. */
+function parseDiamondColor(title: string): string | null {
+  // 1. Fancy colours win — Catawiki spells them out ("Fancy Yellow",
+  //    "Fancy Deep Greyish Greenish Yellow", etc.). The exact hue varies
+  //    too much to map; collapse them all to one "fancy" pricing tier.
+  if (/\bFancy\b/i.test(title)) return "fancy";
+
+  // 2. Colour range like " - O-P" (very-near-colourless to faint yellow):
+  //    take the higher (better) letter, since dealers price ranges that way.
+  const range = title.match(/\s[-–]\s([D-Z])\s*[-–]\s*([D-Z])(?:\s|$)/);
+  if (range) return range[1]!;
+
+  // 3. Letter with a trailing parenthetical like "D (colourless)" /
+  //    "K (faint yellow)" — strip the gloss, keep the letter.
+  const withParen = title.match(/\s[-–]\s([D-Z])\s*\([^)]+\)/);
+  if (withParen) return withParen[1]!;
+
+  // 4. Standalone letter surrounded by hyphen-space on the left and either
+  //    a hyphen-space or end-of-string on the right.
+  const single = title.match(/\s[-–]\s([D-Z])(?=\s[-–]\s|\s*$)/);
+  if (single) return single[1]!;
+
+  return null;
+}
+
 export function parseDiamondGrade(title: string): DiamondGrade | null {
   const caratMatch = title.match(/(\d+(?:[.,]\d+)?)\s*ct\b/i);
   if (!caratMatch) return null;
   const carat = parseFloat(caratMatch[1]!.replace(",", "."));
 
-  // Colour: standalone capital D-N letter, usually wrapped in " - X -"
-  const colorMatch = title.match(/\s-\s([D-N])\s-\s/);
-  if (!colorMatch) return null;
+  const color = parseDiamondColor(title);
+  if (!color) return null;
 
   const clarityMatch = title.match(/\b(IF|FL|VVS1|VVS2|VS1|VS2|SI1|SI2|I1|I2|I3)\b/);
   if (!clarityMatch) return null;
@@ -288,7 +333,7 @@ export function parseDiamondGrade(title: string): DiamondGrade | null {
   return {
     carat,
     shape: parseDiamondShape(title),
-    color: colorMatch[1]!,
+    color,
     clarity: clarityMatch[1]!,
   };
 }
@@ -296,12 +341,8 @@ export function parseDiamondGrade(title: string): DiamondGrade | null {
 function valueDiamondEur(title: string): number | null {
   const g = parseDiamondGrade(title);
   if (!g) return null;
-  const colorRow = DIAMOND_USD_PER_CT_AT_1CT[g.color];
-  if (!colorRow) return null;
-  // Treat FL same as IF (similar tier; rare in titles).
-  const cl = g.clarity === "FL" ? "IF" : g.clarity;
-  const usdPerCt = colorRow[cl];
-  if (!usdPerCt) return null;
+  const usdPerCt = diamondUsdPerCtAt1Ct(g.color, g.clarity);
+  if (usdPerCt == null) return null;
   const totalUsd =
     g.carat * usdPerCt * diamondCaratFactor(g.carat) * DIAMOND_SHAPE_FACTOR[g.shape];
   return toEur(totalUsd, "USD");
