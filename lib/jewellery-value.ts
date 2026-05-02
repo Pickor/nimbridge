@@ -17,16 +17,16 @@
  *   - Rose gold:            Swedish dealer ranges (SEK/g; see notes below)
  */
 
-// ── FX (rough cross rates; refresh when material) ─────────────────────────
-// 1 unit of currency = N EUR
-const EUR_PER: Record<string, number> = {
-  EUR: 1,
-  USD: 0.93,
-  SEK: 0.087,
-  NOK: 0.085,
-  DKK: 0.134,
-  GBP: 1.17,
-};
+// ── FX + spot prices ──────────────────────────────────────────────────────
+// Yellow gold + silver SEK/g and FX rates come from lib/daily-rates.ts,
+// which is regenerated daily by scraper/sync-rates.ts.
+import {
+  GOLD_SEK_PER_G as GOLD_SEK_PER_G_DAILY,
+  SILVER_SEK_PER_G as SILVER_SEK_PER_G_DAILY,
+  EUR_PER as EUR_PER_DAILY,
+} from "./daily-rates";
+
+const EUR_PER = EUR_PER_DAILY;
 
 function toEur(amount: number, fromCcy: string): number {
   const rate = EUR_PER[fromCcy.toUpperCase()];
@@ -117,26 +117,31 @@ export function parseGoldColor(title: string): GoldColor | null {
 //
 // Karats not listed for a given colour fall back to the yellow column.
 
-const YELLOW_GOLD: Record<string, number> = {
-  "24":   118.63,
-  "22":   106.77,
-  "21.6": 106.77,
-  "21":   106.77,
-  "18":    88.97,
-  "14":    69.20,
-  "9":     44.49,
-};
+// Yellow-gold EUR/g built from the live SEK Pengar-direkt rates × the
+// SEK→EUR FX rate. Mixed gold uses the same numbers (most common base).
+function yellowGoldEurPerG(): Record<string, number> {
+  const r: Record<string, number> = {};
+  for (const [k, sek] of Object.entries(GOLD_SEK_PER_G_DAILY)) {
+    r[k] = sek * EUR_PER_DAILY.SEK;
+  }
+  return r;
+}
+const YELLOW_GOLD: Record<string, number> = yellowGoldEurPerG();
 
 const GOLD_EUR_PER_G: Record<GoldColor, Record<string, number>> = {
   yellow: YELLOW_GOLD,
+  // White gold is driven by USD retail (Pricescope-style midpoints), not
+  // kaplans — kept static and re-converted from USD on every load.
   white: {
-    "18": 102.45,
-    "14":  76.04,
-    "10":  55.03,
+    "18": 110 * EUR_PER_DAILY.USD,
+    "14":  82 * EUR_PER_DAILY.USD,
+    "10":  59 * EUR_PER_DAILY.USD,
   },
+  // Rose gold uses Swedish dealer ranges (different source than kaplans);
+  // re-converted from SEK on every load.
   rose: {
-    "18": 82.65,
-    "14": 63.99,
+    "18": 950 * EUR_PER_DAILY.SEK,
+    "14": 735 * EUR_PER_DAILY.SEK,
   },
   mixed: YELLOW_GOLD,
 };
@@ -163,15 +168,9 @@ function valueGoldEur(
   return eurPerG * grams;
 }
 
-// ── Silver (SEK / g, London Fix; user's table) ────────────────────────────
-const SILVER_SEK_PER_G: Record<number, number> = {
-  830: 18.48,
-  925: 20.59,
-  400: 8.90,  // mynt
-  600: 13.36,
-  800: 17.81,
-  900: 20.03,
-};
+// Silver SEK/g comes straight from the daily kaplans fetch (Pengar direkt
+// column).
+const SILVER_SEK_PER_G = SILVER_SEK_PER_G_DAILY;
 
 function parseSilverPurity(title: string): number | null {
   const m = title.match(/\b(?:silver\s*)?(925|830|900|800|600|400)\b/i);

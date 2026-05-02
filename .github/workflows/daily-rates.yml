@@ -1,0 +1,58 @@
+name: Daily metal + FX rates
+
+on:
+  # 06:00 UTC every day, just after London Fix is published.
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Sync rates
+        run: pnpm exec tsx scraper/sync-rates.ts
+
+      - name: Commit + push if changed
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          if git diff --quiet lib/daily-rates.ts; then
+            echo "No price changes today."
+            exit 0
+          fi
+          git add lib/daily-rates.ts
+          git commit -m "chore(rates): refresh daily kaplans + FX [skip ci]"
+          git push
+
+      # Vercel isn't connected to this repo via GitHub App, so we deploy via
+      # the CLI. Skips silently if VERCEL_TOKEN isn't set in repo secrets;
+      # the fresh prices then land on the next manual deploy instead.
+      - name: Redeploy on Vercel
+        if: env.VERCEL_TOKEN != ''
+        env:
+          VERCEL_TOKEN:    ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT:  lookoutcata
+          VERCEL_SCOPE:    tikoonjb-1565s-projects
+        run: |
+          npm install --global vercel@latest
+          vercel pull --yes --environment=production --token="$VERCEL_TOKEN" --scope="$VERCEL_SCOPE"
+          vercel build --prod --token="$VERCEL_TOKEN"
+          vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN" --scope="$VERCEL_SCOPE"
