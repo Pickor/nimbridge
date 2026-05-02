@@ -348,6 +348,77 @@ function valueDiamondEur(title: string): number | null {
   return toEur(totalUsd, "USD");
 }
 
+// ── Diamond certificate / lab report ──────────────────────────────────────
+
+/**
+ * Stable code for each diamond grading lab we filter by. The order also
+ * drives the filter pill row in the dashboard.
+ */
+export const DIAMOND_CERT_LABS = [
+  "IGI",
+  "GIA",
+  "GCI",
+  "GRA",
+  "GWLAB",
+  "HDR",
+] as const;
+export type DiamondCertLab = typeof DIAMOND_CERT_LABS[number];
+
+/**
+ * Per-lab regex.  We match against title + every spec value (Catawiki
+ * usually puts the lab name on a "Laboratory report" / "Certificate"
+ * spec row).  Each pattern is generous about full-name spellings,
+ * dotted abbreviations, and casing — diamond sellers are inconsistent.
+ */
+const DIAMOND_CERT_PATTERNS: Record<DiamondCertLab, RegExp> = {
+  // IGI = "IGI" or "International Gemological Institute"
+  IGI:   /\bIGI\b|International\s+Gemmological?\s+Institute/i,
+  // GIA = "GIA" or "Gemological Institute of America"
+  GIA:   /\bGIA\b|Gem(?:m)?ological\s+Institute\s+(?:of\s+)?America/i,
+  // G.C.I = "Gemmological Centre Israel" or "GCI" / "G.C.I"
+  GCI:   /\bG\.?C\.?I\b|Gem(?:m)?ological\s+Cent(?:re|er)\s+Israel/i,
+  // GRA = "Gem Report Antwerp" or "GRA"
+  GRA:   /\bGRA\b|Gem\s+Report\s+Antwerp/i,
+  // GWLAB = "GWLAB" or "Gemewizard Gemological Laboratory"
+  GWLAB: /\bGWLAB\b|Gemewizard\s+Gem(?:m)?ological\s+Laboratory/i,
+  // HDR Antwerp = "HDR Antwerp" or "HDRAntwerp"
+  HDR:   /\bHDR\s*Antwerp\b/i,
+};
+
+/** Pretty label for the filter pill. Keeps the user-facing dot in "G.C.I". */
+export const DIAMOND_CERT_LABEL: Record<DiamondCertLab, string> = {
+  IGI:   "IGI",
+  GIA:   "GIA",
+  GCI:   "G.C.I",
+  GRA:   "GRA",
+  GWLAB: "GWLAB",
+  HDR:   "HDR Antwerp",
+};
+
+/**
+ * Identify which grading lab certified a diamond lot.
+ * Looks at the lot title plus every specification row's name+value
+ * (Catawiki's "Laboratory report" / "Certificate" rows).  Returns
+ * the first match in `DIAMOND_CERT_LABS` order, or null when no lab
+ * can be identified — meaning the seller didn't disclose one.
+ */
+export function parseDiamondCertificate(
+  title: string,
+  specifications: Array<{ name: string; value: string }> | null = null,
+): DiamondCertLab | null {
+  // Build one haystack — title + every spec name/value joined by newlines.
+  // Newlines stop word-boundary matches from leaking across rows.
+  const haystack = [
+    title,
+    ...((specifications ?? []).flatMap((s) => [s.name, s.value])),
+  ].join("\n");
+
+  for (const lab of DIAMOND_CERT_LABS) {
+    if (DIAMOND_CERT_PATTERNS[lab].test(haystack)) return lab;
+  }
+  return null;
+}
+
 // ── Public API ────────────────────────────────────────────────────────────
 
 /**

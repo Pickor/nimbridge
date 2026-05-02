@@ -9,6 +9,10 @@ import {
   parseDiamondGrade,
   parseGoldKarat,
   parseSilverPurity,
+  parseDiamondCertificate,
+  DIAMOND_CERT_LABS,
+  DIAMOND_CERT_LABEL,
+  type DiamondCertLab,
 } from "@/lib/jewellery-value";
 import { isEuCountry } from "@/lib/eu-countries";
 
@@ -189,6 +193,7 @@ function applyFilters(
   goldColor: GoldColor | null,
   shipsFrom: ShipsFrom,
   activeGrades: Set<string>,
+  activeCerts: Set<DiamondCertLab>,
 ): BucketData {
   const q = search.trim().toLowerCase();
   const filterList = (list: ClassifiedListing[]) =>
@@ -204,6 +209,15 @@ function applyFilters(
       // from both EU and Outside-EU views (we genuinely don't know).
       if (shipsFrom === "eu"     && !isEuCountry(l.seller_country)) return false;
       if (shipsFrom === "non_eu" && (l.seller_country == null || isEuCountry(l.seller_country))) return false;
+      // Certificate filter: diamonds only.  When any lab pill is active,
+      // require the lot to be a diamond (cat 715) AND its parsed cert lab
+      // (from title or specifications) to be one of the selected labs.
+      if (activeCerts.size > 0) {
+        if (l.catawiki_category_id !== 715) return false;
+        const lab = parseDiamondCertificate(l.title, l.specifications);
+        if (!lab || !activeCerts.has(lab)) return false;
+      }
+
       // Grades filter: matches against whichever attribute applies to the
       // lot's material — clarity for diamonds, karat for gold, purity for
       // silver. Lots whose material doesn't yield the expected attribute
@@ -346,6 +360,7 @@ export default function ListingsBoard({
   const [goldColor, setGoldColor] = useState<GoldColor | null>(null);
   const [shipsFrom, setShipsFrom] = useState<ShipsFrom>(null);
   const [activeGrades, setActiveGrades] = useState<Set<string>>(new Set());
+  const [activeCerts,  setActiveCerts]  = useState<Set<DiamondCertLab>>(new Set());
   const [search, setSearch]               = useState("");
 
   const [showTopBtn, setShowTopBtn] = useState(false);
@@ -403,7 +418,7 @@ export default function ListingsBoard({
     buckets, activeCategoryId, activeSubcategoryId,
     activePricePresets, activeBuckets, activeVintagePresets,
     search, requireLastPrice, requireNoReserve, effectiveGoldColor,
-    shipsFrom, activeGrades,
+    shipsFrom, activeGrades, activeCerts,
   );
 
   const sorted: BucketData = {
@@ -459,11 +474,12 @@ export default function ListingsBoard({
                 onClick={() => {
                   setActiveCategoryId(cat.id);
                   setActiveSubcategoryId(cat.subcategoryId ?? null);
-                  // Switching pills clears the colour + grades drill-downs
-                  // so an IF/VVS pick doesn't silently survive from the
-                  // Diamonds tab into Gold / Silver.
+                  // Switching pills clears the colour + grades + cert
+                  // drill-downs so an IF/VVS or IGI pick doesn't silently
+                  // survive from the Diamonds tab into Gold / Silver.
                   setGoldColor(null);
                   setActiveGrades(new Set());
+                  setActiveCerts(new Set());
                 }}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm transition-colors ${
                   active
@@ -638,6 +654,39 @@ export default function ListingsBoard({
               </div>
             );
           })()}
+
+          {/* Certificate — diamonds only.  Multi-select lab filter that
+                inspects the lot's title + Catawiki specifications (where
+                "Laboratory report" usually lives). Lots whose lab can't
+                be identified are excluded when ANY pill is selected. */}
+          {category === "jewellery" && activeCategoryId === 715 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-neutral-500 shrink-0 w-16">Certificate</span>
+              <Pill
+                active={activeCerts.size === 0}
+                onClick={() => setActiveCerts(new Set())}
+                title="Show diamonds with any (or no) lab report"
+              >
+                Any
+              </Pill>
+              {DIAMOND_CERT_LABS.map((lab) => (
+                <Pill
+                  key={lab}
+                  active={activeCerts.has(lab)}
+                  onClick={() =>
+                    setActiveCerts((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(lab)) next.delete(lab); else next.add(lab);
+                      return next;
+                    })
+                  }
+                  title={`Match diamonds graded by ${DIAMOND_CERT_LABEL[lab]}`}
+                >
+                  {DIAMOND_CERT_LABEL[lab]}
+                </Pill>
+              ))}
+            </div>
+          )}
 
           {/* Ships from — exclusive, EU vs Outside-EU vs Any. */}
           <div className="flex flex-wrap items-center gap-2">
