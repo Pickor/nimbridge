@@ -29,6 +29,8 @@ export interface Listing {
   seller: string | null;
   /** Seller's country — ISO-2 code (e.g. "FR") or free-text country name. */
   seller_country: string | null;
+  /** Total weight in grams. Parsed from title or specifications by the scraper. */
+  weight_g: number | null;
   first_seen_at: string;
   last_seen_at: string;
   is_active: boolean;
@@ -77,6 +79,7 @@ export interface HistoryListing {
   catawiki_category_id: number | null;
   catawiki_subcategory_id: number | null;
   seller_country: string | null;
+  weight_g: number | null;
   sb_price: number | null;
   sb_product_id: string | null;
   vivino_rating_avg: number | null;

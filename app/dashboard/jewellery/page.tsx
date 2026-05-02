@@ -11,12 +11,13 @@
 import { createClient } from "@/lib/supabase/server";
 import { getIdentity, hasLevel, ROLE_LEVEL } from "@/lib/admin/roles";
 import { redirect } from "next/navigation";
-import type { ClassifiedListing, BucketData } from "@/lib/types";
+import type { ClassifiedListing, BucketData, HistoryListing } from "@/lib/types";
 import { DEFAULT_SETTINGS } from "@/lib/types";
 import ListingsBoard, { type CategoryDef } from "../listings-board";
 import StatusBar from "@/components/status-bar";
 import AppHeader from "@/components/app-header";
 import { buildNavLinks } from "@/lib/nav-links";
+import { enrichJewelleryLastPrices } from "@/lib/jewellery-match";
 
 const VERTICAL = "jewellery";
 
@@ -43,8 +44,10 @@ export default async function JewelleryDealsPage() {
   if (identity.role === "pending") redirect("/pending");
   if (!hasLevel(identity, ROLE_LEVEL.user)) redirect("/login?error=access");
 
-  const [listingsRes, favoritesRes, activeCountRes, lastRunRes, profileRes, settingsRes] =
-    await Promise.all([
+  const [
+    listingsRes, favoritesRes, activeCountRes, lastRunRes, profileRes, settingsRes,
+    archivesRes,
+  ] = await Promise.all([
       supabase
         .from("v_classified_listings")
         .select("*")
@@ -72,12 +75,26 @@ export default async function JewelleryDealsPage() {
         .select("currency, country_code")
         .eq("user_id", user.id)
         .maybeSingle(),
+      // Recent jewellery closes — small set (~250 rows), used to override the
+      // view's title-based last_auction_price with a grade+weight match.
+      supabase
+        .from("auction_results")
+        .select("title, catawiki_category_id, catawiki_subcategory_id, weight_g, final_price, ends_at")
+        .eq("category", VERTICAL)
+        .order("ends_at", { ascending: false })
+        .limit(2000),
     ]);
 
   const favoriteIds = new Set(
     (favoritesRes.data ?? []).map((f) => f.listing_id as string)
   );
-  const rows = (listingsRes.data ?? []) as ClassifiedListing[];
+  const rawRows = (listingsRes.data ?? []) as ClassifiedListing[];
+  const archives = (archivesRes.data ?? []) as Pick<HistoryListing,
+    "title" | "catawiki_category_id" | "catawiki_subcategory_id" | "weight_g" | "final_price" | "ends_at"
+  >[];
+  // Override last_auction_price using grade+weight match. Listings with
+  // a grade we can't parse keep the view's title-match value.
+  const rows = enrichJewelleryLastPrices(rawRows, archives as HistoryListing[]);
 
   const buckets: BucketData = {
     ending_soon: rows.filter((l) => l.ending_soon_no_bids),

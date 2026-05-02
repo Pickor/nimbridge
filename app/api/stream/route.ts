@@ -12,7 +12,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import type { ClassifiedListing, BucketData } from "@/lib/types";
+import type { ClassifiedListing, BucketData, HistoryListing } from "@/lib/types";
+import { enrichJewelleryLastPrices } from "@/lib/jewellery-match";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,7 +48,24 @@ async function fetchListings(category: string): Promise<ClassifiedListing[]> {
     .eq("category", category)
     .order("ends_at", { ascending: true })
     .limit(5000);
-  return (data ?? []) as ClassifiedListing[];
+  const rows = (data ?? []) as ClassifiedListing[];
+
+  // Jewellery dashboards override the view's title-match last_auction_price
+  // with a grade+weight match. The archive set is small (~250 rows) so
+  // pulling it on every poll is cheap.
+  if (category === "jewellery") {
+    const { data: archData } = await supabaseAdmin
+      .from("auction_results")
+      .select("title, catawiki_category_id, catawiki_subcategory_id, weight_g, final_price, ends_at")
+      .eq("category", "jewellery")
+      .order("ends_at", { ascending: false })
+      .limit(2000);
+    const archives = (archData ?? []) as Pick<HistoryListing,
+      "title" | "catawiki_category_id" | "catawiki_subcategory_id" | "weight_g" | "final_price" | "ends_at"
+    >[];
+    return enrichJewelleryLastPrices(rows, archives as HistoryListing[]);
+  }
+  return rows;
 }
 
 export async function GET(request: Request) {
