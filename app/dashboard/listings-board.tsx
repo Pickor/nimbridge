@@ -4,6 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import type { BucketData, ClassifiedListing } from "@/lib/types";
 import BucketSection from "@/components/bucket-section";
 import { parseGoldColor, type GoldColor } from "@/lib/jewellery-value";
+import { isEuCountry } from "@/lib/eu-countries";
+
+type ShipsFrom = "eu" | "non_eu" | null;
 
 // ── Category / subcategory config ─────────────────────────────────────────
 
@@ -170,6 +173,7 @@ function applyFilters(
   requireLastPrice: boolean,
   requireNoReserve: boolean,
   goldColor: GoldColor | null,
+  shipsFrom: ShipsFrom,
 ): BucketData {
   const q = search.trim().toLowerCase();
   const filterList = (list: ClassifiedListing[]) =>
@@ -181,6 +185,10 @@ function applyFilters(
       if (requireNoReserve && !isNoReserve(l.title)) return false;
       // Gold-colour drill-down only matters when the user is in the Gold pill.
       if (goldColor !== null && parseGoldColor(l.title) !== goldColor) return false;
+      // Ships-from filter: lots with unknown seller_country are excluded
+      // from both EU and Outside-EU views (we genuinely don't know).
+      if (shipsFrom === "eu"     && !isEuCountry(l.seller_country)) return false;
+      if (shipsFrom === "non_eu" && (l.seller_country == null || isEuCountry(l.seller_country))) return false;
 
       if (activePricePresets.size > 0) {
         const bid = l.current_bid ?? 0;
@@ -302,6 +310,7 @@ export default function ListingsBoard({
   const [requireLastPrice, setRequireLastPrice] = useState(false);
   const [requireNoReserve, setRequireNoReserve] = useState(false);
   const [goldColor, setGoldColor] = useState<GoldColor | null>(null);
+  const [shipsFrom, setShipsFrom] = useState<ShipsFrom>(null);
   const [search, setSearch]               = useState("");
 
   const [showTopBtn, setShowTopBtn] = useState(false);
@@ -359,6 +368,7 @@ export default function ListingsBoard({
     buckets, activeCategoryId, activeSubcategoryId,
     activePricePresets, activeBuckets, activeVintagePresets,
     search, requireLastPrice, requireNoReserve, effectiveGoldColor,
+    shipsFrom,
   );
 
   const sorted: BucketData = {
@@ -527,6 +537,20 @@ export default function ListingsBoard({
                 </Pill>
               );
             })}
+          </div>
+
+          {/* Ships from — exclusive, EU vs Outside-EU vs Any. */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-neutral-500 shrink-0 w-16">Ships from</span>
+            <Pill active={shipsFrom === null}    onClick={() => setShipsFrom(null)}>
+              Any
+            </Pill>
+            <Pill active={shipsFrom === "eu"}    onClick={() => setShipsFrom("eu")}    title="Seller country is an EU member state">
+              <span>🇪🇺 EU</span>
+            </Pill>
+            <Pill active={shipsFrom === "non_eu"} onClick={() => setShipsFrom("non_eu")} title="Seller country is known and outside the EU">
+              <span>🌍 Outside EU</span>
+            </Pill>
           </div>
 
           {/* Show only */}

@@ -32,6 +32,8 @@ export interface ScrapedLot {
   lot_outcome: LotOutcome | null;
   ends_at: string;
   seller: string | null;
+  /** Seller's country — ISO-2 code if Catawiki gives one, free-text country name otherwise. */
+  seller_country: string | null;
   catawiki_category_id: number;
   catawiki_subcategory_id: number | null;
   shipping_cost_eur: number | null;
@@ -213,8 +215,48 @@ interface LotDetailsData {
   slug: string | null;
   images: Array<{ id?: string }> | null;
   expertsEstimate: ExpertsEstimate | null;
-  sellerInfo: { sellerName?: string } | null;
+  // Catawiki's sellerInfo can ship under several shapes depending on the
+  // page version — country can be at top level or nested under `location`.
+  // Read all known paths and let the helper below pick the first hit.
+  sellerInfo: {
+    sellerName?: string;
+    country?: string;
+    countryCode?: string;
+    countryName?: string;
+    location?: {
+      country?: string;
+      countryCode?: string;
+      countryName?: string;
+    };
+  } | null;
   specifications: Specification[] | null;
+}
+
+/**
+ * Extract a 2-letter country code (ISO 3166-1 alpha-2) for the seller.
+ * Tries each documented field path; returns null if none populated.
+ */
+function extractSellerCountry(
+  sellerInfo: LotDetailsData["sellerInfo"],
+): string | null {
+  if (!sellerInfo) return null;
+  const candidates: Array<string | undefined> = [
+    sellerInfo.countryCode,
+    sellerInfo.location?.countryCode,
+    sellerInfo.country,
+    sellerInfo.location?.country,
+    sellerInfo.countryName,
+    sellerInfo.location?.countryName,
+  ];
+  for (const c of candidates) {
+    if (typeof c === "string" && c.trim().length > 0) {
+      // Normalise to UPPER-CASE 2-letter code if it already looks like one;
+      // otherwise return the trimmed string as-is (e.g. "France").
+      const trimmed = c.trim();
+      return /^[A-Za-z]{2}$/.test(trimmed) ? trimmed.toUpperCase() : trimmed;
+    }
+  }
+  return null;
 }
 
 interface LotPageProps {
@@ -284,6 +326,7 @@ function parseLotPageProps(
     lot_outcome,
     ends_at: new Date(bid.biddingEndTime).toISOString(),
     seller: ldd?.sellerInfo?.sellerName ?? null,
+    seller_country: extractSellerCountry(ldd?.sellerInfo ?? null),
     catawiki_category_id: catawikiCategoryId,
     catawiki_subcategory_id: catawikiSubcategoryId,
     shipping_cost_eur: null, // populated by scrapeLot after parsing

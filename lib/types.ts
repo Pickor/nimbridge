@@ -27,6 +27,8 @@ export interface Listing {
   lot_outcome: LotOutcome;
   ends_at: string;
   seller: string | null;
+  /** Seller's country — ISO-2 code (e.g. "FR") or free-text country name. */
+  seller_country: string | null;
   first_seen_at: string;
   last_seen_at: string;
   is_active: boolean;
@@ -74,6 +76,7 @@ export interface HistoryListing {
   shipping_cost_eur: number | null;
   catawiki_category_id: number | null;
   catawiki_subcategory_id: number | null;
+  seller_country: string | null;
   sb_price: number | null;
   sb_product_id: string | null;
   vivino_rating_avg: number | null;

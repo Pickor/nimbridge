@@ -68,6 +68,7 @@ export async function upsertLots(
         lot_outcome: lot.lot_outcome,
         ends_at: lot.ends_at,
         seller: lot.seller,
+        seller_country: lot.seller_country,
         catawiki_category_id: lot.catawiki_category_id,
         // Tag with vertical so dashboards can filter Wine vs Jewellery vs Watches.
         // Falls back to wine-whisky-spirits if the category id isn't in the map
@@ -142,7 +143,7 @@ const CLOSING_FIELDS =
   "id, catawiki_id, url, title, image_url, current_bid, final_price, " +
   "bid_count, unique_bidders, lot_outcome, estimated_low, estimated_high, " +
   "shipping_cost_eur, catawiki_category_id, catawiki_subcategory_id, " +
-  "category, sb_price, sb_product_id, ends_at, " +
+  "category, seller_country, sb_price, sb_product_id, ends_at, " +
   "vivino_vintage_id, vivino_rating_avg, vivino_rating_count, " +
   "cellartracker_score";
 
@@ -173,6 +174,7 @@ async function archiveLot(
       catawiki_category_id:    row.catawiki_category_id,
       catawiki_subcategory_id: row.catawiki_subcategory_id,
       category:                row.category ?? "wine-whisky-spirits",
+      seller_country:          row.seller_country,
       sb_price:                row.sb_price,
       sb_product_id:           row.sb_product_id,
       ends_at:                 row.ends_at,
@@ -208,6 +210,7 @@ export async function markInactive(
     estimated_low: number | null; estimated_high: number | null;
     shipping_cost_eur: number | null; catawiki_category_id: number | null;
     catawiki_subcategory_id: number | null; category: string | null;
+    seller_country: string | null;
     sb_price: number | null;
     sb_product_id: string | null; ends_at: string;
     vivino_vintage_id: number | null; vivino_rating_avg: number | null;
