@@ -1,13 +1,15 @@
--- weight_g column on listings + auction_results so the dashboard's
--- "last price" lookup can match jewellery on parsed Grade + Weight
--- without having to regex-scan titles at query time. Backfilled from
--- title text and (for listings only) from the specifications JSONB.
+-- weight_g column on listings + auction_results, populated by the
+-- scraper at upsert/archive time so we can offer Grade+Weight matching
+-- for jewellery later without regex-scanning titles at query time.
+-- Backfilled from title text and (for listings only) from the
+-- specifications JSONB.
 --
--- v_classified_listings.last_auction_price now uses:
---   wine/watches/etc.  -> exact lower(title) match (unchanged)
---   gold (313/1660)    -> same karat (regex on title) AND same weight_g
---   silver (313/841)   -> same purity AND same weight_g
---   diamonds (715)     -> same clarity AND overlapping shape word
+-- NOTE: v_classified_listings still uses the simple lower(title) match
+-- for last_auction_price across all verticals. A grade-aware variant
+-- existed briefly but was reverted because it caused the lateral join
+-- to be too slow on Supabase Free tier. Future work: do the
+-- grade-aware match SSR-side in the jewellery dashboard pages instead
+-- of inside the view.
 
 alter table public.listings        add column if not exists weight_g numeric;
 alter table public.auction_results add column if not exists weight_g numeric;
@@ -40,5 +42,5 @@ update public.listings l
    )
  where l.weight_g is null and l.specifications is not null;
 
--- View update: re-create with grade-aware lateral join. See git history
--- for the full SQL (committed via Management API on 2026-05-02).
+-- View intentionally NOT modified here — see commit 33c05c0 + the
+-- subsequent revert for context.
