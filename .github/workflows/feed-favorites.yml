@@ -1,0 +1,17 @@
+name: Feed favorites
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger favorites scraper
+        run: |
+          curl -sf -X GET https://lookoutcata.vercel.app/api/cron/scrape-favorites \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            --max-time 55

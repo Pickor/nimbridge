@@ -1,0 +1,118 @@
+/**
+ * GET /api/stream — Server-Sent Events feed for the live dashboard.
+ *
+ * Polls v_classified_listings every ~60s and pushes the bucketed result
+ * down a long-lived `text/event-stream` response. A 30s heartbeat keeps
+ * the connection from being closed by intermediate proxies.
+ *
+ * The dashboard subscribes via EventSource. If the connection drops
+ * (Vercel Hobby's 60s function cap, network blip, etc.) the client
+ * auto-reconnects within ~3s and re-renders from the next event.
+ */
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
+import { supabaseAdmin } from "@/lib/supabase/admin";
+import type { ClassifiedListing, BucketData } from "@/lib/types";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+// Vercel Pro supports up to 800s; Hobby is capped at 60s (client auto-reconnects)
+export const maxDuration = 300;
+
+function toBuckets(rows: ClassifiedListing[]): BucketData {
+  return {
+    ending_soon: rows.filter((l) => l.ending_soon_no_bids),
+    low_price:   rows.filter((l) => l.price_bucket === "low"),
+    good_price:  rows.filter((l) => l.price_bucket === "good"),
+    ok_price:    rows.filter((l) => l.price_bucket === "ok"),
+    overpriced:  rows.filter((l) => l.overpriced),
+    rest:        rows.filter((l) => !l.ending_soon_no_bids && l.price_bucket === null && !l.overpriced),
+  };
+}
+
+async function fetchListings(): Promise<ClassifiedListing[]> {
+  const { data } = await supabaseAdmin
+    .from("v_classified_listings")
+    .select("*")
+    .eq("category", "wine-whisky-spirits")
+    .order("ends_at", { ascending: true })
+    .limit(5000);
+  return (data ?? []) as ClassifiedListing[];
+}
+
+export async function GET(request: Request) {
+  // Authenticate using the session cookie
+  const cookieStore = await cookies();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => cookieStore.getAll(),
+        setAll: () => {},
+      },
+    }
+  );
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return new Response("Unauthorized", { status: 401 });
+
+  const signal = request.signal;
+  const encoder = new TextEncoder();
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      const enqueue = (chunk: string) =>
+        controller.enqueue(encoder.encode(chunk));
+
+      const sendEvent = (event: string, data: string) =>
+        enqueue(`event: ${event}\ndata: ${data}\n\n`);
+
+      const sendHeartbeat = () => enqueue(": heartbeat\n\n");
+
+      let lastPayload = "";
+
+      // Send initial snapshot immediately
+      const initial = await fetchListings();
+      const initialBuckets = toBuckets(initial);
+      lastPayload = JSON.stringify(initialBuckets);
+      sendEvent("snapshot", lastPayload);
+
+      const heartbeatTimer = setInterval(() => {
+        if (signal.aborted) return;
+        sendHeartbeat();
+      }, 30_000);
+
+      const pollTimer = setInterval(async () => {
+        if (signal.aborted) return;
+        try {
+          const listings = await fetchListings();
+          const payload = JSON.stringify(toBuckets(listings));
+          if (payload !== lastPayload) {
+            lastPayload = payload;
+            sendEvent("snapshot", payload);
+          }
+        } catch (err) {
+          console.error("[SSE] poll error:", err);
+        }
+      }, 60_000);
+
+      signal.addEventListener("abort", () => {
+        clearInterval(heartbeatTimer);
+        clearInterval(pollTimer);
+        controller.close();
+      });
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    },
+  });
+}

@@ -1,0 +1,42 @@
+name: Reverify outcomes
+
+on:
+  # Runs daily at 09:00 UTC, after the 06:00 main scrape has finished and
+  # given Catawiki extra time to finalize buyer payments / flip `sold`=true.
+  schedule:
+    - cron: "0 9 * * *"
+  # For one-off backfills, dispatch with a custom hours window.
+  workflow_dispatch:
+    inputs:
+      window_hours:
+        description: "Look-back window in hours (default 48)"
+        required: false
+        default: "48"
+        type: string
+
+jobs:
+  reverify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Reverify recent lot outcomes
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: pnpm exec tsx scraper/reverify-recent.ts "${{ inputs.window_hours || '48' }}"

@@ -1,0 +1,31 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# next.js
+.next/
+out/
+
+# env
+.env
+.env.local
+.env*.local
+
+# vercel
+.vercel
+
+# build
+dist/
+build/
+
+# misc
+.DS_Store
+*.pem
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# scraper runtime artefacts (Windows Task Scheduler log)
+scraper/scraper.log
+scraper/scraper.log.bak
