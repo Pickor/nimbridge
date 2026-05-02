@@ -18,7 +18,13 @@ import FavoriteButton from "./favorite-button";
 import Countdown from "./countdown";
 import { fAmount } from "@/lib/currency";
 import { vivinoSearchUrl, cellartrackerSearchUrl, systembolagetSearchUrl } from "@/lib/wine-links";
-import { estimateJewelleryValueEur, extractWeightGrams, parseDiamondGrade } from "@/lib/jewellery-value";
+import {
+  estimateJewelleryValueEur,
+  extractWeightGrams,
+  parseDiamondGrade,
+  parseGoldKarat,
+  parseSilverPurity,
+} from "@/lib/jewellery-value";
 
 // Catawiki adds a 9% buyer's premium to every winning bid.
 const PREMIUM = 1.09;
@@ -82,10 +88,22 @@ export default function ListingRow({
   const weightG = isJewellery
     ? extractWeightGrams(listing.title, listing.specifications)
     : null;
-  // Diamond grade (shape + colour + clarity) parsed from the title.
+  // Per-row "Grade" content depends on the underlying material:
+  //   diamond  -> shape · colour · clarity
+  //   gold     -> "18 kt"
+  //   silver   -> "925"
+  //   anything else -> "—"
   const diamondGrade =
     isJewellery && listing.catawiki_category_id === 715
       ? parseDiamondGrade(listing.title)
+      : null;
+  const goldKarat =
+    isJewellery && listing.catawiki_subcategory_id === 1660
+      ? parseGoldKarat(listing.title)
+      : null;
+  const silverPurity =
+    isJewellery && listing.catawiki_subcategory_id === 841
+      ? parseSilverPurity(listing.title)
       : null;
   const estText =
     listing.estimated_low !== null && listing.estimated_high !== null
@@ -244,7 +262,11 @@ export default function ListingRow({
         </td>
       )}
 
-      {/* Grade — jewellery only (diamonds; '-' for gold/silver). */}
+      {/* Grade — jewellery only.
+            Diamonds: shape · colour · clarity.
+            Gold:     parsed karat.
+            Silver:   parsed purity.
+            Other:    '—'. */}
       {isJewellery && (
         <td className="py-2 pr-3 text-right align-top whitespace-nowrap">
           {diamondGrade ? (
@@ -254,6 +276,14 @@ export default function ListingRow({
               <span className="text-amber-400 font-medium">{diamondGrade.color}</span>
               {" · "}
               <span className="text-cyan-300">{diamondGrade.clarity}</span>
+            </div>
+          ) : goldKarat ? (
+            <div className="text-xs font-medium text-amber-400 tabular-nums" title="Gold karat parsed from title">
+              {goldKarat} kt
+            </div>
+          ) : silverPurity ? (
+            <div className="text-xs font-medium text-neutral-300 tabular-nums" title="Silver purity parsed from title">
+              {silverPurity}
             </div>
           ) : (
             <span className="text-neutral-700 text-xs">—</span>

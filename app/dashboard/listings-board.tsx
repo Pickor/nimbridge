@@ -3,15 +3,24 @@
 import { useEffect, useRef, useState } from "react";
 import type { BucketData, ClassifiedListing } from "@/lib/types";
 import BucketSection from "@/components/bucket-section";
-import { parseGoldColor, type GoldColor, parseDiamondGrade } from "@/lib/jewellery-value";
+import {
+  parseGoldColor,
+  type GoldColor,
+  parseDiamondGrade,
+  parseGoldKarat,
+  parseSilverPurity,
+} from "@/lib/jewellery-value";
 import { isEuCountry } from "@/lib/eu-countries";
 
 type ShipsFrom = "eu" | "non_eu" | null;
 
-// Catawiki diamond clarity grades. We filter on these because they're the
-// most common axis users ask "show me only Xs" by.
+// Pills shown in the "Grades" row, by jewellery context.  When the user
+// is in a Gold pill, the row offers karat values; in Silver, purity
+// numbers; in Diamonds (or All), diamond clarity.  Filtering takes the
+// raw string match against the parsed value so this stays simple.
 const DIAMOND_CLARITIES = ["IF", "VVS1", "VVS2", "VS1", "VS2", "SI1", "SI2", "I1"] as const;
-type DiamondClarity = (typeof DIAMOND_CLARITIES)[number];
+const GOLD_KARATS       = ["24", "21.6", "18", "14", "9"] as const;
+const SILVER_PURITIES   = ["925", "830", "900", "800", "600", "400"] as const;
 
 // ── Category / subcategory config ─────────────────────────────────────────
 
@@ -179,7 +188,7 @@ function applyFilters(
   requireNoReserve: boolean,
   goldColor: GoldColor | null,
   shipsFrom: ShipsFrom,
-  activeClarities: Set<DiamondClarity>,
+  activeGrades: Set<string>,
 ): BucketData {
   const q = search.trim().toLowerCase();
   const filterList = (list: ClassifiedListing[]) =>
@@ -195,13 +204,24 @@ function applyFilters(
       // from both EU and Outside-EU views (we genuinely don't know).
       if (shipsFrom === "eu"     && !isEuCountry(l.seller_country)) return false;
       if (shipsFrom === "non_eu" && (l.seller_country == null || isEuCountry(l.seller_country))) return false;
-      // Diamond clarity filter: applies only to diamond lots (catawiki
-      // category 715). When any clarities are selected, non-diamonds and
-      // diamonds with non-matching clarity are excluded.
-      if (activeClarities.size > 0) {
-        if (l.catawiki_category_id !== 715) return false;
-        const grade = parseDiamondGrade(l.title);
-        if (!grade || !activeClarities.has(grade.clarity as DiamondClarity)) return false;
+      // Grades filter: matches against whichever attribute applies to the
+      // lot's material — clarity for diamonds, karat for gold, purity for
+      // silver. Lots whose material doesn't yield the expected attribute
+      // are excluded when ANY grade is selected.
+      if (activeGrades.size > 0) {
+        if (l.catawiki_category_id === 715) {
+          const g = parseDiamondGrade(l.title);
+          if (!g || !activeGrades.has(g.clarity)) return false;
+        } else if (l.catawiki_subcategory_id === 1660) {
+          const k = parseGoldKarat(l.title);
+          if (!k || !activeGrades.has(k)) return false;
+        } else if (l.catawiki_subcategory_id === 841) {
+          const p = parseSilverPurity(l.title);
+          if (!p || !activeGrades.has(String(p))) return false;
+        } else {
+          // Material we don't grade — drop it from results when filter is on.
+          return false;
+        }
       }
 
       if (activePricePresets.size > 0) {
@@ -325,7 +345,7 @@ export default function ListingsBoard({
   const [requireNoReserve, setRequireNoReserve] = useState(false);
   const [goldColor, setGoldColor] = useState<GoldColor | null>(null);
   const [shipsFrom, setShipsFrom] = useState<ShipsFrom>(null);
-  const [activeClarities, setActiveClarities] = useState<Set<DiamondClarity>>(new Set());
+  const [activeGrades, setActiveGrades] = useState<Set<string>>(new Set());
   const [search, setSearch]               = useState("");
 
   const [showTopBtn, setShowTopBtn] = useState(false);
@@ -383,7 +403,7 @@ export default function ListingsBoard({
     buckets, activeCategoryId, activeSubcategoryId,
     activePricePresets, activeBuckets, activeVintagePresets,
     search, requireLastPrice, requireNoReserve, effectiveGoldColor,
-    shipsFrom, activeClarities,
+    shipsFrom, activeGrades,
   );
 
   const sorted: BucketData = {
@@ -430,9 +450,11 @@ export default function ListingsBoard({
                 onClick={() => {
                   setActiveCategoryId(cat.id);
                   setActiveSubcategoryId(cat.subcategoryId ?? null);
-                  // Switching pills clears the Gold-colour drill-down so it
-                  // doesn't silently survive into Diamonds / Silver.
+                  // Switching pills clears the colour + grades drill-downs
+                  // so an IF/VVS pick doesn't silently survive from the
+                  // Diamonds tab into Gold / Silver.
                   setGoldColor(null);
+                  setActiveGrades(new Set());
                 }}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm transition-colors ${
                   active
@@ -554,35 +576,56 @@ export default function ListingsBoard({
             })}
           </div>
 
-          {/* Grades — diamond clarity, jewellery dashboard only. Multi-select. */}
-          {category === "jewellery" && (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs text-neutral-500 shrink-0 w-16">Grades</span>
-              <Pill
-                active={activeClarities.size === 0}
-                onClick={() => setActiveClarities(new Set())}
-                title="Show all clarity grades"
-              >
-                Any
-              </Pill>
-              {DIAMOND_CLARITIES.map((g) => (
+          {/* Grades — context-aware multi-select.
+                Diamond pill (cat 715)        -> Clarity (IF…I1)
+                Gold pill (cat 313 sub 1660)  -> Karat (24K…9K)
+                Silver pill (cat 313 sub 841) -> Purity (925…400)
+                All / no jewellery sub-pill    -> hide entirely */}
+          {category === "jewellery" && (() => {
+            const isGold     = activeCategoryId === 313 && activeSubcategoryId === 1660;
+            const isSilver   = activeCategoryId === 313 && activeSubcategoryId === 841;
+            const isDiamond  = activeCategoryId === 715;
+            if (!isGold && !isSilver && !isDiamond) return null;
+
+            const label   = isGold ? "Karat" : isSilver ? "Purity" : "Clarity";
+            const options: readonly string[] =
+              isGold ? GOLD_KARATS : isSilver ? SILVER_PURITIES : DIAMOND_CLARITIES;
+            const renderLabel = (opt: string) =>
+              isGold ? `${opt} kt` : opt;
+            const tooltip = (opt: string) =>
+              isGold   ? `Gold ${opt} kt` :
+              isSilver ? `Silver ${opt}/1000` :
+                         `Diamond clarity ${opt}`;
+
+            return (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-neutral-500 shrink-0 w-16">{label}</span>
                 <Pill
-                  key={g}
-                  active={activeClarities.has(g)}
-                  onClick={() =>
-                    setActiveClarities((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(g)) next.delete(g); else next.add(g);
-                      return next;
-                    })
-                  }
-                  title={`Diamond clarity ${g}`}
+                  active={activeGrades.size === 0}
+                  onClick={() => setActiveGrades(new Set())}
+                  title={`Show all ${label.toLowerCase()} values`}
                 >
-                  {g}
+                  Any
                 </Pill>
-              ))}
-            </div>
-          )}
+                {options.map((g) => (
+                  <Pill
+                    key={g}
+                    active={activeGrades.has(g)}
+                    onClick={() =>
+                      setActiveGrades((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(g)) next.delete(g); else next.add(g);
+                        return next;
+                      })
+                    }
+                    title={tooltip(g)}
+                  >
+                    {renderLabel(g)}
+                  </Pill>
+                ))}
+              </div>
+            );
+          })()}
 
           {/* Ships from — exclusive, EU vs Outside-EU vs Any. */}
           <div className="flex flex-wrap items-center gap-2">
@@ -692,11 +735,13 @@ export default function ListingsBoard({
             <div className="flex gap-2">
               <dt className="font-medium text-neutral-300 min-w-[110px] shrink-0">Grade</dt>
               <dd className="text-neutral-400">
-                Diamond grade parsed from the title:
+                Material-aware. For <strong>diamonds</strong>:
                 shape (Round / Heart / …) ·{" "}
                 <span className="text-amber-400">colour D-N</span> ·{" "}
                 <span className="text-cyan-300">clarity IF/VVS/VS/SI/I</span>.
-                Empty for non-diamond lots.
+                For <strong>gold</strong>: parsed karat (e.g. <span className="text-amber-400">18 kt</span>).
+                For <strong>silver</strong>: parsed purity (e.g. 925).
+                Empty when the title doesn&apos;t carry the expected attribute.
               </dd>
             </div>
           )}

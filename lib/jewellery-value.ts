@@ -146,10 +146,14 @@ const GOLD_EUR_PER_G: Record<GoldColor, Record<string, number>> = {
   mixed: YELLOW_GOLD,
 };
 
-function parseGoldKarat(title: string): string | null {
-  // "18 kt." / "18K" / "18 K" / "14 kt"
+/**
+ * Parse the karat number from a gold lot's title.
+ * Catawiki convention: "18 kt." / "18K" / "14 kt".  Returns the karat
+ * as a string ("18", "14", "21.6", …) so dotted variants survive.
+ */
+export function parseGoldKarat(title: string): string | null {
   const k = title.match(/\b(\d{1,2}(?:[.,]\d)?)\s*(?:kt|K|karat)\b/i);
-  return k ? k[1].replace(",", ".") : null;
+  return k ? k[1]!.replace(",", ".") : null;
 }
 
 function valueGoldEur(
@@ -172,9 +176,10 @@ function valueGoldEur(
 // column).
 const SILVER_SEK_PER_G = SILVER_SEK_PER_G_DAILY;
 
-function parseSilverPurity(title: string): number | null {
+/** Parse silver purity (925 / 830 / 900 / 800 / 600 / 400) from the title. */
+export function parseSilverPurity(title: string): number | null {
   const m = title.match(/\b(?:silver\s*)?(925|830|900|800|600|400)\b/i);
-  return m ? parseInt(m[1], 10) : null;
+  return m ? parseInt(m[1]!, 10) : null;
 }
 
 function valueSilverEur(
