@@ -13,9 +13,9 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 
-const GITHUB_REPO     = "Pickor/archive-cwfqwn1-private";
+const GITHUB_REPO     = "Pickor/nimbridge";
 const WORKFLOW_FILE   = "feed-lots.yml";
-const GITHUB_REF      = "master";
+const GITHUB_REF      = "main";
 
 function makeAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;

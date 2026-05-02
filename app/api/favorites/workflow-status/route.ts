@@ -8,7 +8,7 @@
  */
 import { NextResponse } from "next/server";
 
-const GITHUB_REPO   = "Pickor/archive-cwfqwn1-private";
+const GITHUB_REPO   = "Pickor/nimbridge";
 const WORKFLOW_FILE = "feed-lots.yml";
 
 interface WorkflowRun {
