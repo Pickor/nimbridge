@@ -58,18 +58,39 @@ interface Props {
   currency: string;
   showShipping: boolean;
   /**
-   * Vertical the lot belongs to. Drives which extra columns appear
-   * (Rating + SB pris are wine-only; Value is jewellery-only).
+   * Vertical the lot belongs to. When omitted, falls back to the lot's
+   * own listing.category — important on /favorites where mixed-vertical
+   * rows share one table.
    */
   vertical?: "wine-whisky-spirits" | "jewellery" | "watches" | "apple";
+  /**
+   * "dashboard" (default) renders only the columns relevant to the
+   * caller's vertical — clean, narrow tables. "favorites" renders every
+   * extra column on every row so a wine + a diamond + a gold lot can
+   * sit in one aligned table; cells fall back to "—" when not applicable.
+   * SB pris column is hidden entirely in favorites mode.
+   */
+  mode?: "dashboard" | "favorites";
 }
 
 export default function ListingRow({
   listing, isFavorite, onToggleFavorite, currency, showShipping,
-  vertical = "wine-whisky-spirits",
+  vertical, mode = "dashboard",
 }: Props) {
-  const isWine = vertical === "wine-whisky-spirits";
-  const isJewellery = vertical === "jewellery";
+  const effectiveVertical: Props["vertical"] =
+    vertical ?? (listing.category as Props["vertical"]) ?? "wine-whisky-spirits";
+  const isWine = effectiveVertical === "wine-whisky-spirits";
+  const isJewellery = effectiveVertical === "jewellery";
+
+  // What cells to render. In favorites mode every extra column except
+  // SB pris is always laid out so the table stays aligned across mixed
+  // verticals; each cell's content still varies by the row's vertical.
+  const isFav = mode === "favorites";
+  const renderRating  = isFav || isWine;
+  const renderSb      = !isFav && isWine && currency === "SEK";
+  const renderValue   = isFav || isJewellery;
+  const renderGrade   = isFav || isJewellery;
+  const renderWeight  = isFav || isJewellery;
   const bid = listing.current_bid;
   const withPremium = bid !== null ? bid * PREMIUM : null;
   const shipping = listing.shipping_cost_eur ?? null;
@@ -209,8 +230,8 @@ export default function ListingRow({
         )}
       </td>
 
-      {/* Vivino + CellarTracker ratings — wine only */}
-      {isWine && (
+      {/* Vivino + CellarTracker ratings — wine only (always rendered in favorites) */}
+      {renderRating && (
         <td className="py-2 pr-3 text-right align-top whitespace-nowrap">
           {listing.vivino_rating_avg != null || listing.cellartracker_score != null ? (
             <div className="flex flex-col items-end gap-0.5">
@@ -243,8 +264,8 @@ export default function ListingRow({
         </td>
       )}
 
-      {/* Systembolaget retail price — wine only, and only when displaying in SEK */}
-      {isWine && currency === "SEK" && (
+      {/* Systembolaget retail price — wine only, SEK only, and never on favorites */}
+      {renderSb && (
         <td className="py-2 pr-3 text-right align-top whitespace-nowrap">
           {listing.sb_price != null ? (
             <a
@@ -262,12 +283,8 @@ export default function ListingRow({
         </td>
       )}
 
-      {/* Grade — jewellery only.
-            Diamonds: shape · colour · clarity.
-            Gold:     parsed karat.
-            Silver:   parsed purity.
-            Other:    '—'. */}
-      {isJewellery && (
+      {/* Grade — jewellery only (always rendered in favorites). */}
+      {renderGrade && (
         <td className="py-2 pr-3 text-right align-top whitespace-nowrap">
           {diamondGrade ? (
             <div className="text-xs text-neutral-300 tabular-nums" title="Shape · Colour · Clarity">
@@ -291,8 +308,8 @@ export default function ListingRow({
         </td>
       )}
 
-      {/* Weight — jewellery only */}
-      {isJewellery && (
+      {/* Weight — jewellery only (always rendered in favorites). */}
+      {renderWeight && (
         <td className="py-2 pr-3 text-right align-top whitespace-nowrap">
           {weightG != null ? (
             <div className="text-xs text-neutral-300 tabular-nums" title="Weight parsed from title or specifications">
@@ -304,8 +321,8 @@ export default function ListingRow({
         </td>
       )}
 
-      {/* Estimated material / stone value — jewellery only */}
-      {isJewellery && (
+      {/* Estimated material / stone value — jewellery only (always rendered in favorites). */}
+      {renderValue && (
         <td className="py-2 pr-3 text-right align-top whitespace-nowrap">
           {valueEur != null ? (
             <div

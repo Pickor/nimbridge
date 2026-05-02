@@ -235,9 +235,9 @@ export default function FavoritesBoard({
                 )}
                 <th className="py-2 pr-3 text-xs font-medium text-neutral-400 text-right whitespace-nowrap">Last price</th>
                 <th className="py-2 pr-3 text-xs font-medium text-neutral-400 text-right whitespace-nowrap">Rating</th>
-                {currency === "SEK" && (
-                  <th className="py-2 pr-3 text-xs font-medium text-neutral-400 text-right whitespace-nowrap">SB pris</th>
-                )}
+                <th className="py-2 pr-3 text-xs font-medium text-neutral-400 text-right whitespace-nowrap">Grade</th>
+                <th className="py-2 pr-3 text-xs font-medium text-neutral-400 text-right whitespace-nowrap">Weight</th>
+                <th className="py-2 pr-3 text-xs font-medium text-neutral-400 text-right whitespace-nowrap">Value</th>
                 <th className="py-2 pr-3 text-xs font-medium text-neutral-400 text-right whitespace-nowrap">Estimate</th>
                 <th className="py-2 pr-3 text-xs font-medium text-neutral-400 text-right whitespace-nowrap">vs Est</th>
                 <th className="py-2 pr-3 text-xs font-medium text-neutral-400 text-right whitespace-nowrap">Time left</th>
@@ -253,6 +253,7 @@ export default function FavoritesBoard({
                   onToggleFavorite={handleToggle}
                   currency={currency}
                   showShipping={showShipping}
+                  mode="favorites"
                 />
               ))}
             </tbody>
