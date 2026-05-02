@@ -16,6 +16,7 @@ import Image from "next/image";
 import type { HistoryListing } from "@/lib/types";
 import { fAmount } from "@/lib/currency";
 import { vivinoSearchUrl, cellartrackerSearchUrl, systembolagetSearchUrl } from "@/lib/wine-links";
+import { estimateJewelleryValueEur } from "@/lib/jewellery-value";
 
 // Catawiki adds a 9% buyer's premium to the winning bid.
 const PREMIUM = 1.09;
@@ -59,9 +60,24 @@ interface Props {
 
 export default function HistoryRow({ listing, currency, showShipping, vertical = "wine-whisky-spirits" }: Props) {
   const isWine = vertical === "wine-whisky-spirits";
+  const isJewellery = vertical === "jewellery";
   const final       = listing.final_price;
   const withPremium = final * PREMIUM;
   const shipping    = listing.shipping_cost_eur ?? null;
+
+  // Material/stone valuation in EUR — jewellery only. auction_results
+  // doesn't carry the `specifications` JSONB column, so we feed the
+  // archive's stored `weight_g` straight in (gold/silver need it; diamonds
+  // get carat from the title regardless).
+  const valueEur = isJewellery
+    ? estimateJewelleryValueEur(
+        listing.title,
+        listing.catawiki_category_id,
+        listing.catawiki_subcategory_id,
+        null,
+        listing.weight_g,
+      )
+    : null;
 
   const estText =
     listing.estimated_low !== null && listing.estimated_high !== null
@@ -145,6 +161,22 @@ export default function HistoryRow({ listing, currency, showShipping, vertical =
             </div>
           ) : (
             <span className="text-neutral-600 text-xs">—</span>
+          )}
+        </td>
+      )}
+
+      {/* Estimated material / stone value — jewellery only. */}
+      {isJewellery && (
+        <td className="py-2 pr-3 text-right align-top whitespace-nowrap">
+          {valueEur != null ? (
+            <div
+              className="text-xs font-medium text-cyan-400 tabular-nums"
+              title="Rough material / stone value from title parsing — sanity check, not an appraisal"
+            >
+              {fAmount(valueEur, currency)}
+            </div>
+          ) : (
+            <span className="text-neutral-700 text-xs">—</span>
           )}
         </td>
       )}

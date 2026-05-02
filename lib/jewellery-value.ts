@@ -159,9 +159,13 @@ export function parseGoldKarat(title: string): string | null {
 function valueGoldEur(
   title: string,
   specifications: Array<{ name: string; value: string }> | null,
+  weightGramsOverride: number | null = null,
 ): number | null {
   const karat = parseGoldKarat(title);
-  const grams = extractWeightGrams(title, specifications);
+  // Prefer the explicit override (used by /history, where auction_results
+  // has a populated weight_g column but no specifications JSONB) and only
+  // fall back to title/spec extraction otherwise.
+  const grams = weightGramsOverride ?? extractWeightGrams(title, specifications);
   if (!karat || grams == null) return null;
   // If no colour parsed, default to yellow (most common, conservative-ish).
   const colour: GoldColor = parseGoldColor(title) ?? "yellow";
@@ -185,9 +189,10 @@ export function parseSilverPurity(title: string): number | null {
 function valueSilverEur(
   title: string,
   specifications: Array<{ name: string; value: string }> | null,
+  weightGramsOverride: number | null = null,
 ): number | null {
   const purity = parseSilverPurity(title);
-  const grams = extractWeightGrams(title, specifications);
+  const grams = weightGramsOverride ?? extractWeightGrams(title, specifications);
   if (!purity || grams == null) return null;
   const sekPerG = SILVER_SEK_PER_G[purity];
   if (!sekPerG) return null;
@@ -431,6 +436,7 @@ export function estimateJewelleryValueEur(
   catawikiCategoryId: number | null,
   catawikiSubcategoryId: number | null,
   specifications: Array<{ name: string; value: string }> | null = null,
+  weightGramsOverride: number | null = null,
 ): number | null {
   // Diamonds (own top-level category) — carat is the weight, no specs needed.
   if (catawikiCategoryId === 715) {
@@ -438,8 +444,8 @@ export function estimateJewelleryValueEur(
   }
   // Jewellery main; subcategory tells us metal.
   if (catawikiCategoryId === 313) {
-    if (catawikiSubcategoryId === 1660) return valueGoldEur(title, specifications);
-    if (catawikiSubcategoryId === 841)  return valueSilverEur(title, specifications);
+    if (catawikiSubcategoryId === 1660) return valueGoldEur(title, specifications, weightGramsOverride);
+    if (catawikiSubcategoryId === 841)  return valueSilverEur(title, specifications, weightGramsOverride);
   }
   return null;
 }

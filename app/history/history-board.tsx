@@ -531,6 +531,9 @@ export default function HistoryBoard({
                   {showShipping && (
                     <th className="py-2 pr-3 text-xs font-medium text-neutral-400 text-right whitespace-nowrap min-w-[80px]">Total {currency}</th>
                   )}
+                  {isJewellery && (
+                    <th className="py-2 pr-3 text-xs font-medium text-neutral-400 text-right whitespace-nowrap">Value</th>
+                  )}
                   <th className="py-2 pr-3 text-xs font-medium text-neutral-400 text-right whitespace-nowrap">Estimate</th>
                   <th className="py-2 pr-3 text-xs font-medium text-neutral-400 text-right whitespace-nowrap">vs Est</th>
                   <th className="py-2 pr-3 text-xs font-medium text-neutral-400 text-right whitespace-nowrap">Bids</th>
