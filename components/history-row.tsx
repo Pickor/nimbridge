@@ -17,6 +17,7 @@ import type { HistoryListing } from "@/lib/types";
 import { fAmount } from "@/lib/currency";
 import { vivinoSearchUrl, cellartrackerSearchUrl, systembolagetSearchUrl } from "@/lib/wine-links";
 import { estimateJewelleryValueEur } from "@/lib/jewellery-value";
+import { isNoReserve } from "@/lib/no-reserve";
 
 // Catawiki adds a 9% buyer's premium to the winning bid.
 const PREMIUM = 1.09;
@@ -109,8 +110,18 @@ export default function HistoryRow({ listing, currency, showShipping, vertical =
         >
           {listing.title}
         </a>
-        <div className="text-[10px] text-neutral-500 mt-0.5 tabular-nums">
-          Ended {formatDate(listing.ends_at)}
+        <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+          <span className="text-[10px] text-neutral-500 tabular-nums">
+            Ended {formatDate(listing.ends_at)}
+          </span>
+          {isNoReserve(listing.title) && (
+            <span
+              className="text-[10px] font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded-full px-1.5 py-px leading-none whitespace-nowrap"
+              title="Catawiki marked this lot as No reserve — no minimum price"
+            >
+              🟢 No reserve
+            </span>
+          )}
         </div>
       </td>
 

@@ -456,23 +456,21 @@ export default function HistoryBoard({
           </div>
         )}
 
-        {/* Ships from — jewellery + watches only. Wine archives don't
-            currently surface seller country in the same way, and the
-            existing wine UX doesn't have this row. */}
-        {(isJewellery || vertical === "watches") && (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-neutral-500 shrink-0 w-16">Ships from</span>
-            <Pill active={shipsFrom === null}     onClick={() => setShipsFrom(null)}>
-              Any
-            </Pill>
-            <Pill active={shipsFrom === "eu"}     onClick={() => setShipsFrom("eu")}     title="Seller country is an EU member state">
-              <span>🇪🇺 EU</span>
-            </Pill>
-            <Pill active={shipsFrom === "non_eu"} onClick={() => setShipsFrom("non_eu")} title="Seller country is known and outside the EU">
-              <span>🌍 Outside EU</span>
-            </Pill>
-          </div>
-        )}
+        {/* Ships from — applies to every vertical. Wine archives carry
+            seller_country the same way jewellery / watches do (the scraper
+            populates it on every upsert via the same code path). */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-neutral-500 shrink-0 w-16">Ships from</span>
+          <Pill active={shipsFrom === null}     onClick={() => setShipsFrom(null)}>
+            Any
+          </Pill>
+          <Pill active={shipsFrom === "eu"}     onClick={() => setShipsFrom("eu")}     title="Seller country is an EU member state">
+            <span>🇪🇺 EU</span>
+          </Pill>
+          <Pill active={shipsFrom === "non_eu"} onClick={() => setShipsFrom("non_eu")} title="Seller country is known and outside the EU">
+            <span>🌍 Outside EU</span>
+          </Pill>
+        </div>
 
         {/* Sort */}
         <div className="flex flex-wrap items-center gap-2">

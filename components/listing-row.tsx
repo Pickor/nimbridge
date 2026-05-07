@@ -25,6 +25,7 @@ import {
   parseGoldKarat,
   parseSilverPurity,
 } from "@/lib/jewellery-value";
+import { isNoReserve } from "@/lib/no-reserve";
 
 // Catawiki adds a 9% buyer's premium to every winning bid.
 const PREMIUM = 1.09;
@@ -156,8 +157,18 @@ export default function ListingRow({
         >
           {listing.title}
         </a>
-        <div className="text-[10px] text-neutral-500 mt-0.5 tabular-nums">
-          {listing.bid_count} bid{listing.bid_count !== 1 ? "s" : ""}
+        <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+          <span className="text-[10px] text-neutral-500 tabular-nums">
+            {listing.bid_count} bid{listing.bid_count !== 1 ? "s" : ""}
+          </span>
+          {isNoReserve(listing.title) && (
+            <span
+              className="text-[10px] font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded-full px-1.5 py-px leading-none whitespace-nowrap"
+              title="Catawiki marks this lot as No reserve — no minimum price"
+            >
+              🟢 No reserve
+            </span>
+          )}
         </div>
       </td>
 
