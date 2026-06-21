@@ -14,7 +14,7 @@
  * them, so they stay in lib/jewellery-value.ts as static defaults.
  */
 
-export const FETCHED_AT = "2026-06-20T09:18:26.840Z";
+export const FETCHED_AT = "2026-06-21T09:52:45.690Z";
 
 /** Gold "Pengar direkt" SEK/g, by karat string. */
 export const GOLD_SEK_PER_G: Record<string, number> = {
