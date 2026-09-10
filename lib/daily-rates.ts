@@ -14,36 +14,36 @@
  * them, so they stay in lib/jewellery-value.ts as static defaults.
  */
 
-export const FETCHED_AT = "2026-09-09T10:54:23.558Z";
+export const FETCHED_AT = "2026-09-10T10:50:49.017Z";
 
 /** Gold "Pengar direkt" SEK/g, by karat string. */
 export const GOLD_SEK_PER_G: Record<string, number> = {
-  "24"   : 1288.91,
-  "23"   : 1118.19,
-  "22"   : 1050.12,
-  "21.6" : 1050.12,
-  "21"   : 1050.12,
-  "18"   : 875.1,
-  "14"   : 680.64,
-  "9"    : 437.55,
+  "24"   : 1291.14,
+  "23"   : 1120.12,
+  "22"   : 1051.94,
+  "21.6" : 1051.94,
+  "21"   : 1051.94,
+  "18"   : 876.62,
+  "14"   : 681.82,
+  "9"    : 438.31,
 };
 
 /** Silver "Pengar direkt" SEK/g, by purity number. */
 export const SILVER_SEK_PER_G: Record<number, number> = {
-  925: 12.36,
-  900: 12.03,
-  830: 11.09,
-  800: 10.69,
-  600: 8.02,
-  400: 5.35,
+  925: 12.48,
+  900: 12.14,
+  830: 11.2,
+  800: 10.8,
+  600: 8.1,
+  400: 5.4,
 };
 
 /** EUR per 1 unit of the named currency. ECB reference rates. */
 export const EUR_PER: Record<string, number> = {
   DKK: 0.1338,
   EUR: 1,
-  GBP: 1.1663,
-  NOK: 0.0931,
+  GBP: 1.1642,
+  NOK: 0.0935,
   SEK: 0.0897,
-  USD: 0.861,
+  USD: 0.8582,
 };
